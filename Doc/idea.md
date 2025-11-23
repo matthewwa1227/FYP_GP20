@@ -1,6 +1,36 @@
 ✅ FINAL PROJECT DEFINITION
 🎯 PROBLEM STATEMENT (Combined - All Problems)
 
+Frontend:
+
+React.js 18+ (Component-based UI)
+
+Tailwind CSS (Responsive Design)
+
+PWA (Installable, Offline Support)
+
+Backend:
+
+Node.js + Express (REST API)
+
+PostgreSQL (Relational Database)
+
+JWT (Authentication)
+
+AI Integration:
+
+Groq API (Fast Chatbot Responses)
+
+DeepSeek API (Learning Project Optimization)
+
+Deployment:
+
+Frontend: Vercel (PWA Support)
+
+Backend: Railway/Render
+
+Database: Railway/Supabase
+
 "Students struggle with consistent study habits due to lack of motivation, immediate feedback, and effective learning strategies. Parents want to support their children's education but lack visibility into actual study behaviors and data-driven tools to provide meaningful guidance. Existing solutions either focus solely on basic time tracking (boring, no engagement) or shallow gamification (fun but no real insights), failing to combine behavioral analytics, family collaboration, and AI-powered personalization to create sustainable study habits and improved academic outcomes."
 💡 SOLUTION
 
