@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Clock, Trophy, Target, Users, BookOpen, ChevronRight, Bell, Settings, LogOut, Home, BarChart3, Gift, Zap, Star, Award, TrendingUp, Calendar, MessageSquare, CheckCircle, XCircle, Send, Plus, Search, Filter } from 'lucide-react';
+import { Clock, Trophy, Target, Users, BookOpen, ChevronRight, Bell, Settings, LogOut, Home, BarChart3, Gift, Zap, Star, Award, TrendingUp, Calendar, MessageSquare, CheckCircle, XCircle, Send, Plus, Search, Filter, UserCheck, Heart, ThumbsUp, Eye } from 'lucide-react';
 
 function StudyQuestMockups() {
   const [currentView, setCurrentView] = useState('student-dashboard');
@@ -23,13 +23,17 @@ function StudyQuestMockups() {
     { name: 'Biology', time: 60, color: 'bg-yellow-500' }
   ];
 
-  const achievements = [
-    { name: 'First Session', icon: '🎯', unlocked: true },
-    { name: '7 Day Streak', icon: '🔥', unlocked: true },
-    { name: 'Night Owl', icon: '🦉', unlocked: true },
-    { name: 'Century Club', icon: '💯', unlocked: false },
-    { name: 'Team Player', icon: '🤝', unlocked: false },
-    { name: 'Subject Master', icon: '📚', unlocked: false }
+  const allAchievements = [
+    { name: 'First Session', icon: '🎯', unlocked: true, description: 'Complete your first study session', date: 'Nov 1, 2025' },
+    { name: '7 Day Streak', icon: '🔥', unlocked: true, description: 'Study for 7 consecutive days', date: 'Nov 18, 2025' },
+    { name: 'Night Owl', icon: '🦉', unlocked: true, description: 'Study after 10 PM', date: 'Nov 10, 2025' },
+    { name: 'Early Bird', icon: '🌅', unlocked: true, description: 'Study before 7 AM', date: 'Nov 5, 2025' },
+    { name: 'Century Club', icon: '💯', unlocked: false, description: 'Study for 100 hours total', progress: 65 },
+    { name: 'Team Player', icon: '🤝', unlocked: false, description: 'Join 5 study groups', progress: 2 },
+    { name: 'Subject Master', icon: '📚', unlocked: false, description: 'Study one subject for 50 hours', progress: 35 },
+    { name: 'Speed Demon', icon: '⚡', unlocked: false, description: 'Complete 10 sessions in one day', progress: 0 },
+    { name: 'Marathon Runner', icon: '🏃', unlocked: false, description: 'Study for 6 hours straight', progress: 0 },
+    { name: 'Social Butterfly', icon: '🦋', unlocked: false, description: 'Make 10 study friends', progress: 6 }
   ];
 
   const leaderboard = [
@@ -40,10 +44,27 @@ function StudyQuestMockups() {
     { rank: 5, name: 'Lisa Park', points: 2500, avatar: '👩' }
   ];
 
-  const challenges = [
-    { title: 'Study 120 minutes today', progress: 45, goal: 120, points: 50, type: 'daily' },
-    { title: 'Complete 5 sessions this week', progress: 3, goal: 5, points: 100, type: 'weekly' },
-    { title: 'Master Mathematics', progress: 180, goal: 300, points: 200, type: 'subject' }
+  const allChallenges = [
+    { id: 1, title: 'Study 120 minutes today', progress: 45, goal: 120, points: 50, type: 'daily', timeLeft: '8 hours', category: 'Time' },
+    { id: 2, title: 'Complete 5 sessions this week', progress: 3, goal: 5, points: 100, type: 'weekly', timeLeft: '3 days', category: 'Consistency' },
+    { id: 3, title: 'Master Mathematics', progress: 180, goal: 300, points: 200, type: 'subject', timeLeft: '14 days', category: 'Subject Focus' },
+    { id: 4, title: 'Maintain 10-day streak', progress: 7, goal: 10, points: 150, type: 'streak', timeLeft: '3 days', category: 'Consistency' },
+    { id: 5, title: 'Join 3 study groups', progress: 1, goal: 3, points: 75, type: 'social', timeLeft: '7 days', category: 'Social' },
+    { id: 6, title: 'Study before 8 AM twice', progress: 0, goal: 2, points: 80, type: 'time-based', timeLeft: '5 days', category: 'Time Challenge' }
+  ];
+
+  const studyGroups = [
+    { name: 'Math Wizards', members: 12, subject: 'Mathematics', activeNow: 3, level: 'Advanced' },
+    { name: 'Physics Squad', members: 8, subject: 'Physics', activeNow: 1, level: 'Intermediate' },
+    { name: 'Chemistry Club', members: 15, subject: 'Chemistry', activeNow: 5, level: 'Beginner' },
+    { name: 'Night Owls', members: 20, subject: 'Mixed', activeNow: 7, level: 'All Levels' }
+  ];
+
+  const friends = [
+    { name: 'Alex Kumar', status: 'online', studying: 'Mathematics', streak: 15, avatar: '👨' },
+    { name: 'Emma Watson', status: 'online', studying: 'Physics', streak: 12, avatar: '👩' },
+    { name: 'John Doe', status: 'offline', studying: null, streak: 8, avatar: '👦' },
+    { name: 'Lisa Park', status: 'online', studying: 'Chemistry', streak: 10, avatar: '👩' }
   ];
 
   // Navigation Component
@@ -81,7 +102,7 @@ function StudyQuestMockups() {
           <p className="text-sm text-gray-500 mt-1">{role.charAt(0).toUpperCase() + role.slice(1)} Portal</p>
         </div>
         
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {navItems.map(item => (
             <button
               key={item.id}
@@ -235,8 +256,8 @@ function StudyQuestMockups() {
             <button className="text-sm text-indigo-600 hover:text-indigo-700 font-medium">View All</button>
           </div>
           <div className="space-y-4">
-            {challenges.slice(0, 3).map((challenge, i) => (
-              <div key={i} className="border border-gray-200 rounded-lg p-4">
+            {allChallenges.slice(0, 3).map((challenge) => (
+              <div key={challenge.id} className="border border-gray-200 rounded-lg p-4">
                 <div className="flex justify-between items-start mb-2">
                   <h4 className="font-medium text-gray-900">{challenge.title}</h4>
                   <span className="bg-yellow-100 text-yellow-800 text-xs font-semibold px-2 py-1 rounded">
@@ -261,7 +282,7 @@ function StudyQuestMockups() {
             <button className="text-sm text-indigo-600 hover:text-indigo-700 font-medium">View All</button>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            {achievements.map((achievement, i) => (
+            {allAchievements.slice(0, 6).map((achievement, i) => (
               <div 
                 key={i}
                 className={`text-center p-4 rounded-lg border-2 ${
@@ -358,6 +379,67 @@ function StudyQuestMockups() {
     );
   };
 
+  // Student Achievements (NEW)
+  const StudentAchievements = () => (
+    <div className="p-8">
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-900">Achievements</h2>
+          <p className="text-gray-500 mt-1">Track your milestones and unlock badges</p>
+        </div>
+        <div className="text-right">
+          <p className="text-sm text-gray-500">Unlocked</p>
+          <p className="text-2xl font-bold text-indigo-600">{allAchievements.filter(a => a.unlocked).length}/{allAchievements.length}</p>
+        </div>
+      </div>
+
+      <div className="flex space-x-4 mb-6">
+        <button className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium">All</button>
+        <button className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50">Unlocked</button>
+        <button className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50">Locked</button>
+      </div>
+
+      <div className="grid grid-cols-3 gap-6">
+        {allAchievements.map((achievement, i) => (
+          <div 
+            key={i}
+            className={`bg-white rounded-xl p-6 border-2 ${
+              achievement.unlocked 
+                ? 'border-yellow-400 shadow-lg' 
+                : 'border-gray-200 opacity-75'
+            }`}
+          >
+            <div className="flex items-start justify-between mb-4">
+              <div className="text-6xl">{achievement.icon}</div>
+              {achievement.unlocked ? (
+                <CheckCircle className="w-8 h-8 text-green-500" />
+              ) : (
+                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
+                  <span className="text-gray-400 text-xs">🔒</span>
+                </div>
+              )}
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">{achievement.name}</h3>
+            <p className="text-sm text-gray-600 mb-4">{achievement.description}</p>
+            {achievement.unlocked ? (
+              <p className="text-xs text-green-600 font-medium">Unlocked on {achievement.date}</p>
+            ) : (
+              <div>
+                <div className="bg-gray-100 rounded-full h-2 mb-2">
+                  <div 
+                    className="bg-indigo-500 rounded-full h-2"
+                    style={{ width: `${achievement.progress || 0}%` }}
+                  ></div>
+                </div>
+                <p className="text-xs text-gray-500">{achievement.progress || 0}% complete</p>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   // Student Leaderboard
   const StudentLeaderboard = () => (
     <div className="p-8">
@@ -398,6 +480,194 @@ function StudyQuestMockups() {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+
+  // Student Challenges (NEW)
+  const StudentChallenges = () => (
+    <div className="p-8">
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-900">Challenges</h2>
+          <p className="text-gray-500 mt-1">Complete challenges to earn extra points</p>
+        </div>
+        <div className="flex space-x-3">
+          <button className="px-4 py-2 border border-gray-300 rounded-lg flex items-center space-x-2 hover:bg-gray-50">
+            <Filter className="w-4 h-4" />
+            <span>Filter</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="flex space-x-4 mb-6">
+        <button className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium">All</button>
+        <button className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50">Daily</button>
+        <button className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50">Weekly</button>
+        <button className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50">Subject</button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-6">
+        {allChallenges.map((challenge) => (
+          <div key={challenge.id} className="bg-white rounded-xl p-6 border-2 border-gray-200 hover:border-indigo-400 transition-colors">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <span className="bg-indigo-100 text-indigo-800 text-xs font-semibold px-3 py-1 rounded-full">
+                  {challenge.category}
+                </span>
+                <h3 className="text-xl font-bold text-gray-900 mt-3">{challenge.title}</h3>
+              </div>
+              <span className="bg-yellow-100 text-yellow-800 text-sm font-bold px-3 py-2 rounded-lg">
+                +{challenge.points} pts
+              </span>
+            </div>
+            
+            <div className="mb-4">
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-gray-600">Progress</span>
+                <span className="font-semibold text-gray-900">{challenge.progress}/{challenge.goal}</span>
+              </div>
+              <div className="bg-gray-100 rounded-full h-3">
+                <div 
+                  className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full h-3"
+                  style={{ width: `${(challenge.progress / challenge.goal) * 100}%` }}
+                ></div>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center">
+              <div className="flex items-center space-x-2 text-sm text-gray-500">
+                <Clock className="w-4 h-4" />
+                <span>{challenge.timeLeft} left</span>
+              </div>
+              <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 text-sm">
+                View Details
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // Student Social (NEW)
+  const StudentSocial = () => (
+    <div className="p-8">
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-900">Social Hub</h2>
+          <p className="text-gray-500 mt-1">Connect with friends and join study groups</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-6">
+        <div className="col-span-2 space-y-6">
+          <div className="bg-white rounded-xl p-6 border border-gray-200">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-semibold text-gray-900">Study Groups</h3>
+              <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 flex items-center space-x-2">
+                <Plus className="w-4 h-4" />
+                <span>Create Group</span>
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              {studyGroups.map((group, i) => (
+                <div key={i} className="border border-gray-200 rounded-lg p-4 hover:border-indigo-300 transition-colors">
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <h4 className="font-semibold text-gray-900 text-lg">{group.name}</h4>
+                      <p className="text-sm text-gray-500">{group.subject} • {group.level}</p>
+                    </div>
+                    <span className="bg-green-100 text-green-800 text-xs font-semibold px-2 py-1 rounded">
+                      {group.activeNow} studying now
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center space-x-2 text-sm text-gray-600">
+                      <Users className="w-4 h-4" />
+                      <span>{group.members} members</span>
+                    </div>
+                    <button className="px-4 py-2 border-2 border-indigo-600 text-indigo-600 rounded-lg font-medium hover:bg-indigo-50">
+                      Join Group
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl p-6 border border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900 mb-6">Recent Activity</h3>
+            <div className="space-y-4">
+              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
+                <div className="text-2xl">👨</div>
+                <div className="flex-1">
+                  <p className="text-sm"><span className="font-semibold">Alex Kumar</span> completed the <span className="font-semibold">Study Marathon</span> challenge</p>
+                  <p className="text-xs text-gray-500">2 hours ago</p>
+                </div>
+                <ThumbsUp className="w-5 h-5 text-gray-400 hover:text-indigo-600 cursor-pointer" />
+              </div>
+              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
+                <div className="text-2xl">👩</div>
+                <div className="flex-1">
+                  <p className="text-sm"><span className="font-semibold">Emma Watson</span> achieved a <span className="font-semibold">14-day streak</span></p>
+                  <p className="text-xs text-gray-500">5 hours ago</p>
+                </div>
+                <Heart className="w-5 h-5 text-gray-400 hover:text-red-500 cursor-pointer" />
+              </div>
+              <div className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
+                <div className="text-2xl">👦</div>
+                <div className="flex-1">
+                  <p className="text-sm"><span className="font-semibold">John Doe</span> joined <span className="font-semibold">Math Wizards</span> study group</p>
+                  <p className="text-xs text-gray-500">1 day ago</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="bg-white rounded-xl p-6 border border-gray-200">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-semibold text-gray-900">Friends</h3>
+              <button className="text-indigo-600 hover:text-indigo-700">
+                <Plus className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              {friends.map((friend, i) => (
+                <div key={i} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg cursor-pointer">
+                  <div className="flex items-center space-x-3">
+                    <div className="relative">
+                      <div className="text-2xl">{friend.avatar}</div>
+                      <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${
+                        friend.status === 'online' ? 'bg-green-500' : 'bg-gray-400'
+                      }`}></div>
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900 text-sm">{friend.name}</p>
+                      {friend.studying ? (
+                        <p className="text-xs text-green-600">Studying {friend.studying}</p>
+                      ) : (
+                        <p className="text-xs text-gray-500">Offline</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-500">{friend.streak}🔥</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl p-6 text-white">
+            <h3 className="text-lg font-semibold mb-2">Invite Friends</h3>
+            <p className="text-sm text-indigo-100 mb-4">Get 100 points for each friend who joins!</p>
+            <button className="w-full px-4 py-2 bg-white text-indigo-600 rounded-lg font-medium hover:bg-indigo-50">
+              Send Invites
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -476,6 +746,84 @@ function StudyQuestMockups() {
               Send Encouragement
             </button>
           </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Parent Children (NEW)
+  const ParentChildren = () => {
+    const children = [
+      { name: 'Sarah Chen', age: 15, level: 12, streak: 7, weeklyMins: 285, avatar: '👧', grade: '10th', school: 'Lincoln High' },
+      { name: 'David Chen', age: 13, level: 8, streak: 3, weeklyMins: 180, avatar: '👦', grade: '8th', school: 'Lincoln Middle' }
+    ];
+
+    return (
+      <div className="p-8">
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900">My Children</h2>
+            <p className="text-gray-500 mt-1">Manage and monitor your children's accounts</p>
+          </div>
+          <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 flex items-center space-x-2">
+            <Plus className="w-4 h-4" />
+            <span>Add Child</span>
+          </button>
+        </div>
+
+        <div className="space-y-6">
+          {children.map((child, i) => (
+            <div key={i} className="bg-white rounded-xl p-6 border border-gray-200">
+              <div className="flex items-start justify-between mb-6">
+                <div className="flex items-center space-x-4">
+                  <div className="text-6xl">{child.avatar}</div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-gray-900">{child.name}</h3>
+                    <p className="text-gray-500">{child.age} years old • {child.grade} Grade</p>
+                    <p className="text-sm text-gray-400">{child.school}</p>
+                  </div>
+                </div>
+                <button className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50">
+                  Edit Profile
+                </button>
+              </div>
+
+              <div className="grid grid-cols-5 gap-4 mb-6">
+                <div className="text-center p-4 bg-indigo-50 rounded-lg">
+                  <p className="text-3xl font-bold text-indigo-600">{child.level}</p>
+                  <p className="text-sm text-gray-600 mt-1">Level</p>
+                </div>
+                <div className="text-center p-4 bg-orange-50 rounded-lg">
+                  <p className="text-3xl font-bold text-orange-600">{child.streak}</p>
+                  <p className="text-sm text-gray-600 mt-1">Day Streak</p>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <p className="text-3xl font-bold text-green-600">{child.weeklyMins}</p>
+                  <p className="text-sm text-gray-600 mt-1">Weekly Mins</p>
+                </div>
+                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                  <p className="text-3xl font-bold text-purple-600">12</p>
+                  <p className="text-sm text-gray-600 mt-1">Achievements</p>
+                </div>
+                <div className="text-center p-4 bg-yellow-50 rounded-lg">
+                  <p className="text-3xl font-bold text-yellow-600">2850</p>
+                  <p className="text-sm text-gray-600 mt-1">Total Points</p>
+                </div>
+              </div>
+
+              <div className="flex space-x-3">
+                <button className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700">
+                  View Full Report
+                </button>
+                <button className="flex-1 px-4 py-2 border-2 border-indigo-600 text-indigo-600 rounded-lg font-medium hover:bg-indigo-50">
+                  Set Goals
+                </button>
+                <button className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50">
+                  Send Message
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -680,6 +1028,93 @@ function StudyQuestMockups() {
     </div>
   );
 
+  // Parent Verify Sessions (NEW)
+  const ParentVerify = () => {
+    const pendingSessions = [
+      { child: 'Sarah Chen', subject: 'Mathematics', duration: 45, date: 'Nov 22, 2025', time: '3:00 PM - 3:45 PM', points: 45, notes: 'Studied calculus derivatives', photo: true },
+      { child: 'Sarah Chen', subject: 'Physics', duration: 60, date: 'Nov 22, 2025', time: '7:00 PM - 8:00 PM', points: 60, notes: 'Worked on mechanics problems', photo: false },
+      { child: 'David Chen', subject: 'English', duration: 30, date: 'Nov 22, 2025', time: '4:00 PM - 4:30 PM', points: 30, notes: 'Essay writing practice', photo: true }
+    ];
+
+    return (
+      <div className="p-8">
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900">Verify Study Sessions</h2>
+            <p className="text-gray-500 mt-1">Review and approve your children's study sessions</p>
+          </div>
+          <span className="bg-red-100 text-red-800 text-sm font-semibold px-4 py-2 rounded-full">
+            {pendingSessions.length} Pending
+          </span>
+        </div>
+
+        <div className="space-y-4">
+          {pendingSessions.map((session, i) => (
+            <div key={i} className="bg-white rounded-xl p-6 border-2 border-yellow-200">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <div className="flex items-center space-x-3 mb-2">
+                    <h3 className="text-xl font-bold text-gray-900">{session.child}</h3>
+                    <span className="bg-indigo-100 text-indigo-800 text-xs font-semibold px-3 py-1 rounded-full">
+                      {session.subject}
+                    </span>
+                  </div>
+                  <p className="text-gray-600">{session.date} • {session.time}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-gray-900">{session.duration} min</p>
+                  <p className="text-sm text-green-600">+{session.points} points</p>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <p className="text-sm font-semibold text-gray-700 mb-1">Session Notes:</p>
+                <p className="text-gray-600">{session.notes}</p>
+              </div>
+
+              {session.photo && (
+                <div className="mb-4">
+                  <p className="text-sm font-semibold text-gray-700 mb-2">Study Material Photo:</p>
+                  <div className="bg-gray-100 rounded-lg h-32 flex items-center justify-center">
+                    <Eye className="w-8 h-8 text-gray-400" />
+                    <span className="ml-2 text-gray-500">View Photo</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex space-x-3">
+                <button className="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 flex items-center justify-center space-x-2">
+                  <CheckCircle className="w-5 h-5" />
+                  <span>Approve Session</span>
+                </button>
+                <button className="flex-1 px-6 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 flex items-center justify-center space-x-2">
+                  <XCircle className="w-5 h-5" />
+                  <span>Reject Session</span>
+                </button>
+                <button className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50">
+                  Request Info
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-8 bg-white rounded-xl p-6 border border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Recently Verified</h3>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center p-4 bg-green-50 rounded-lg border border-green-200">
+              <div>
+                <p className="font-medium text-gray-900">Sarah Chen - Chemistry (60 min)</p>
+                <p className="text-sm text-gray-500">Verified on Nov 21, 2025</p>
+              </div>
+              <span className="bg-green-600 text-white text-xs font-semibold px-3 py-1 rounded">Approved</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Teacher Dashboard
   const TeacherDashboard = () => (
     <div className="p-8 space-y-6">
@@ -782,16 +1217,373 @@ function StudyQuestMockups() {
     </div>
   );
 
+  // Teacher Students (NEW)
+  const TeacherStudents = () => {
+    const students = [
+      { name: 'Sarah Chen', level: 12, weeklyTime: 510, streak: 7, lastActive: '2 hours ago', status: 'excellent' },
+      { name: 'Alex Kumar', level: 11, weeklyTime: 432, streak: 15, lastActive: '1 hour ago', status: 'excellent' },
+      { name: 'Emma Watson', level: 10, weeklyTime: 408, streak: 12, lastActive: '3 hours ago', status: 'good' },
+      { name: 'John Doe', level: 7, weeklyTime: 30, streak: 0, lastActive: '3 days ago', status: 'warning' },
+      { name: 'Lisa Park', level: 9, weeklyTime: 72, streak: 2, lastActive: '1 day ago', status: 'warning' },
+      { name: 'Mike Johnson', level: 8, weeklyTime: 108, streak: 3, lastActive: '5 hours ago', status: 'good' }
+    ];
+
+    return (
+      <div className="p-8">
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900">My Students</h2>
+            <p className="text-gray-500 mt-1">Manage and monitor individual student progress</p>
+          </div>
+          <div className="flex space-x-3">
+            <button className="px-4 py-2 border border-gray-300 rounded-lg flex items-center space-x-2 hover:bg-gray-50">
+              <Search className="w-4 h-4" />
+              <span>Search</span>
+            </button>
+            <button className="px-4 py-2 border border-gray-300 rounded-lg flex items-center space-x-2 hover:bg-gray-50">
+              <Filter className="w-4 h-4" />
+              <span>Filter</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Student</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Level</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Weekly Time</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Streak</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Last Active</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Status</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {students.map((student, i) => (
+                <tr key={i} className="border-b border-gray-200 hover:bg-gray-50">
+                  <td className="px-6 py-4">
+                    <p className="font-medium text-gray-900">{student.name}</p>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="bg-indigo-100 text-indigo-800 text-sm font-medium px-3 py-1 rounded-full">
+                      {student.level}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <p className="font-semibold text-gray-900">{student.weeklyTime} min</p>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center space-x-1">
+                      <span className="font-semibold text-gray-900">{student.streak}</span>
+                      <span>🔥</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <p className="text-sm text-gray-500">{student.lastActive}</p>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                      student.status === 'excellent' ? 'bg-green-100 text-green-800' :
+                      student.status === 'good' ? 'bg-blue-100 text-blue-800' :
+                      'bg-red-100 text-red-800'
+                    }`}>
+                      {student.status.charAt(0).toUpperCase() + student.status.slice(1)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <button className="px-3 py-1 bg-indigo-600 text-white rounded text-sm font-medium hover:bg-indigo-700">
+                      View
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  // Teacher Class Challenges (NEW)
+  const TeacherChallenges = () => {
+    const classChallenges = [
+      { id: 1, title: 'Study Marathon', type: 'Time-Based', goal: '500 minutes total', participants: 24, progress: 68, startDate: 'Nov 20', endDate: 'Nov 25', reward: '50 bonus points', status: 'active' },
+      { id: 2, title: 'Math Focus Week', type: 'Subject-Based', goal: '200 minutes in Math', participants: 18, progress: 45, startDate: 'Nov 18', endDate: 'Nov 24', reward: '100 bonus points', status: 'active' },
+      { id: 3, title: 'Perfect Attendance', type: 'Streak-Based', goal: '7 day streak', participants: 28, progress: 85, startDate: 'Nov 15', endDate: 'Nov 23', reward: '75 bonus points', status: 'ending-soon' },
+      { id: 4, title: 'Team Study Challenge', type: 'Collaborative', goal: '2000 minutes combined', participants: 28, progress: 55, startDate: 'Nov 1', endDate: 'Nov 30', reward: '150 bonus points', status: 'active' }
+    ];
+
+    return (
+      <div className="p-8">
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900">Class Challenges</h2>
+            <p className="text-gray-500 mt-1">Create and manage challenges for your students</p>
+          </div>
+          <button className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 flex items-center space-x-2">
+            <Plus className="w-5 h-5" />
+            <span>Create New Challenge</span>
+          </button>
+        </div>
+
+        <div className="flex space-x-4 mb-6">
+          <button className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-medium">All Challenges</button>
+          <button className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50">Active</button>
+          <button className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50">Completed</button>
+          <button className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50">Drafts</button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-6">
+          {classChallenges.map((challenge) => (
+            <div key={challenge.id} className="bg-white rounded-xl p-6 border-2 border-gray-200 hover:border-indigo-300 transition-colors">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <div className="flex items-center space-x-3 mb-2">
+                    <h3 className="text-xl font-bold text-gray-900">{challenge.title}</h3>
+                    {challenge.status === 'ending-soon' && (
+                      <span className="bg-red-100 text-red-800 text-xs font-semibold px-2 py-1 rounded">
+                        Ending Soon
+                      </span>
+                    )}
+                  </div>
+                  <span className="bg-purple-100 text-purple-800 text-xs font-semibold px-3 py-1 rounded-full">
+                    {challenge.type}
+                  </span>
+                </div>
+                <button className="text-gray-400 hover:text-gray-600">
+                  <Settings className="w-5 h-5" />
+                </button>
+              </div>
+
+              <p className="text-gray-600 mb-4">{challenge.goal}</p>
+
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs text-gray-500 mb-1">Participants</p>
+                  <p className="text-xl font-bold text-gray-900">{challenge.participants}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs text-gray-500 mb-1">Reward</p>
+                  <p className="text-sm font-semibold text-green-600">{challenge.reward}</p>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-gray-600">Overall Progress</span>
+                  <span className="font-semibold text-gray-900">{challenge.progress}%</span>
+                </div>
+                <div className="bg-gray-100 rounded-full h-3">
+                  <div 
+                    className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full h-3"
+                    style={{ width: `${challenge.progress}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center text-sm text-gray-500 mb-4">
+                <span>{challenge.startDate} - {challenge.endDate}</span>
+              </div>
+
+              <div className="flex space-x-2">
+                <button className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700">
+                  View Details
+                </button>
+                <button className="flex-1 px-4 py-2 border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50">
+                  Edit Challenge
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // Teacher Class Analytics (NEW)
+  const TeacherAnalytics = () => (
+    <div className="p-8">
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-900">Class Analytics</h2>
+          <p className="text-gray-500 mt-1">Comprehensive insights into class performance</p>
+        </div>
+        <select className="px-4 py-2 border border-gray-300 rounded-lg">
+          <option>Last 7 Days</option>
+          <option>Last 30 Days</option>
+          <option>This Semester</option>
+        </select>
+      </div>
+
+      <div className="grid grid-cols-4 gap-6 mb-6">
+        <div className="bg-white rounded-xl p-6 border border-gray-200">
+          <p className="text-gray-500 text-sm mb-2">Total Study Hours</p>
+          <p className="text-4xl font-bold text-gray-900">342</p>
+          <p className="text-sm text-green-600 mt-2">↑ 18% from last week</p>
+        </div>
+        <div className="bg-white rounded-xl p-6 border border-gray-200">
+          <p className="text-gray-500 text-sm mb-2">Class Average</p>
+          <p className="text-4xl font-bold text-indigo-600">4.2 hrs</p>
+          <p className="text-sm text-gray-500 mt-2">per student/week</p>
+        </div>
+        <div className="bg-white rounded-xl p-6 border border-gray-200">
+          <p className="text-gray-500 text-sm mb-2">Participation Rate</p>
+          <p className="text-4xl font-bold text-green-600">86%</p>
+          <p className="text-sm text-green-600 mt-2">↑ 4% from last week</p>
+        </div>
+        <div className="bg-white rounded-xl p-6 border border-gray-200">
+          <p className="text-gray-500 text-sm mb-2">Avg Streak</p>
+          <p className="text-4xl font-bold text-orange-600">5.3</p>
+          <p className="text-sm text-gray-500 mt-2">days</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-6 mb-6">
+        <div className="bg-white rounded-xl p-6 border border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Weekly Study Time Distribution</h3>
+          <div className="h-64 flex items-end justify-between space-x-2">
+            {[280, 320, 250, 380, 340, 360, 290].map((hours, i) => (
+              <div key={i} className="flex-1 flex flex-col items-center">
+                <div 
+                  className="w-full bg-indigo-500 rounded-t-lg"
+                  style={{ height: `${(hours / 380) * 100}%` }}
+                ></div>
+                <p className="text-xs text-gray-500 mt-2">
+                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i]}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl p-6 border border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Subject Preferences</h3>
+          <div className="space-y-4">
+            {[
+              { subject: 'Mathematics', percentage: 35, color: 'bg-blue-500' },
+              { subject: 'Physics', percentage: 28, color: 'bg-purple-500' },
+              { subject: 'Chemistry', percentage: 20, color: 'bg-green-500' },
+              { subject: 'Biology', percentage: 17, color: 'bg-yellow-500' }
+            ].map((item, i) => (
+              <div key={i}>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-gray-700 font-medium">{item.subject}</span>
+                  <span className="text-gray-900 font-semibold">{item.percentage}%</span>
+                </div>
+                <div className="bg-gray-100 rounded-full h-3">
+                  <div 
+                    className={`${item.color} rounded-full h-3`}
+                    style={{ width: `${item.percentage}%` }}
+                  ></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-6">
+        <div className="bg-white rounded-xl p-6 border border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Performance Categories</h3>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
+              <span className="text-gray-700">Excellent (6+ hrs/week)</span>
+              <span className="font-bold text-green-600">8 students</span>
+            </div>
+            <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
+              <span className="text-gray-700">Good (4-6 hrs/week)</span>
+              <span className="font-bold text-blue-600">12 students</span>
+            </div>
+            <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
+              <span className="text-gray-700">Average (2-4 hrs/week)</span>
+              <span className="font-bold text-yellow-600">5 students</span>
+            </div>
+            <div className="flex justify-between items-center p-3 bg-red-50 rounded-lg">
+              <span className="text-gray-700">Needs Support (under 2 hrs)</span>
+              <span className="font-bold text-red-600">3 students</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl p-6 border border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Peak Study Times</h3>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+              <span className="text-gray-700">7-9 PM</span>
+              <div className="flex items-center space-x-2">
+                <div className="bg-indigo-500 h-2 rounded-full" style={{ width: '80px' }}></div>
+                <span className="font-semibold text-gray-900">45%</span>
+              </div>
+            </div>
+            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+              <span className="text-gray-700">3-5 PM</span>
+              <div className="flex items-center space-x-2">
+                <div className="bg-indigo-500 h-2 rounded-full" style={{ width: '65px' }}></div>
+                <span className="font-semibold text-gray-900">30%</span>
+              </div>
+            </div>
+            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+              <span className="text-gray-700">9-11 PM</span>
+              <div className="flex items-center space-x-2">
+                <div className="bg-indigo-500 h-2 rounded-full" style={{ width: '40px' }}></div>
+                <span className="font-semibold text-gray-900">15%</span>
+              </div>
+            </div>
+            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+              <span className="text-gray-700">Other</span>
+              <div className="flex items-center space-x-2">
+                <div className="bg-indigo-500 h-2 rounded-full" style={{ width: '25px' }}></div>
+                <span className="font-semibold text-gray-900">10%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl p-6 border border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Achievements Unlocked</h3>
+          <div className="text-center py-6">
+            <p className="text-5xl font-bold text-indigo-600 mb-2">156</p>
+            <p className="text-gray-600 mb-4">Total achievements this week</p>
+          </div>
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">7-Day Streak</span>
+              <span className="font-semibold">18 students</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">First Session</span>
+              <span className="font-semibold">5 students</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">Night Owl</span>
+              <span className="font-semibold">12 students</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   // View Router
   const renderView = () => {
     switch(currentView) {
       case 'student-dashboard': return <StudentDashboard />;
       case 'student-study': return <StudentStudySession />;
+      case 'student-achievements': return <StudentAchievements />;
       case 'student-leaderboard': return <StudentLeaderboard />;
+      case 'student-challenges': return <StudentChallenges />;
+      case 'student-social': return <StudentSocial />;
       case 'parent-dashboard': return <ParentDashboard />;
+      case 'parent-children': return <ParentChildren />;
       case 'parent-analytics': return <ParentAnalytics />;
       case 'parent-goals': return <ParentGoals />;
+      case 'parent-verify': return <ParentVerify />;
       case 'teacher-dashboard': return <TeacherDashboard />;
+      case 'teacher-students': return <TeacherStudents />;
+      case 'teacher-challenges': return <TeacherChallenges />;
+      case 'teacher-analytics': return <TeacherAnalytics />;
       default: return <StudentDashboard />;
     }
   };
@@ -837,7 +1629,7 @@ function StudyQuestMockups() {
             </button>
           </div>
           <div className="text-sm text-gray-500">
-            StudyQuest UI Mockups - Interactive Demo
+            StudyQuest UI Mockups - Complete Interactive Demo
           </div>
         </div>
       </div>
