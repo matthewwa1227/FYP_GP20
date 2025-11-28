@@ -250,4 +250,41 @@ router.post('/login', async (req, res) => {
   }
 });
 
+const { authenticateToken } = require('../middleware/auth');
+
+// Protected route - requires valid token
+router.get('/profile', authenticateToken, async (req, res) => {
+  try {
+    // req.student is available because of authenticateToken middleware
+    const result = await db.query(
+      `SELECT id, username, email, full_name, avatar_url, bio,
+              total_points, current_level, experience_points, 
+              streak_days, total_study_minutes, total_sessions,
+              created_at, last_login
+       FROM students 
+       WHERE id = $1`,
+      [req.student.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('❌ Profile fetch error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error fetching profile'
+    });
+  }
+});
+
 module.exports = router;
