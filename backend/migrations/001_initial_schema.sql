@@ -1,6 +1,6 @@
 -- ============================================
 -- StudyQuest Database Schema
--- FYP GP20 - Initial Migration
+-- FYP GP20 - Complete Migration
 -- ============================================
 
 -- Enable UUID extension
@@ -26,10 +26,15 @@ CREATE TABLE students (
     current_level INTEGER DEFAULT 1,
     experience_points INTEGER DEFAULT 0,
     streak_days INTEGER DEFAULT 0,
+    level INTEGER DEFAULT 1,
+    xp INTEGER DEFAULT 0,
     
     -- Study Stats
     total_study_minutes INTEGER DEFAULT 0,
     total_sessions INTEGER DEFAULT 0,
+    total_study_time INTEGER DEFAULT 0,
+    current_streak INTEGER DEFAULT 0,
+    longest_streak INTEGER DEFAULT 0,
     
     -- Timestamps
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -41,7 +46,7 @@ CREATE TABLE students (
     CONSTRAINT email_format CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
 );
 
--- Index for faster lookups
+-- Indexes for faster lookups
 CREATE INDEX idx_students_email ON students(email);
 CREATE INDEX idx_students_username ON students(username);
 
@@ -54,35 +59,44 @@ CREATE TABLE study_sessions (
     student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
     
     -- Session Details
-    subject VARCHAR(100),
+    subject VARCHAR(100) NOT NULL,
     topic VARCHAR(255),
-    duration_minutes INTEGER NOT NULL,
+    duration_minutes INTEGER DEFAULT 0,
+    duration INTEGER DEFAULT 0,
     
     -- Timestamps
-    started_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    started_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     ended_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     
     -- Points & Rewards
     points_earned INTEGER DEFAULT 0,
     experience_gained INTEGER DEFAULT 0,
+    xp_earned INTEGER DEFAULT 0,
     
     -- Session Status
-    status VARCHAR(20) DEFAULT 'completed',
+    status VARCHAR(20) DEFAULT 'active',
+    is_active BOOLEAN DEFAULT TRUE,
     
     -- Notes
     notes TEXT,
     
     -- Constraints
-    CONSTRAINT duration_positive CHECK (duration_minutes > 0),
-    CONSTRAINT valid_status CHECK (status IN ('active', 'completed', 'abandoned')),
-    CONSTRAINT ended_after_started CHECK (ended_at IS NULL OR ended_at >= started_at)
+    CONSTRAINT duration_positive CHECK (duration_minutes >= 0),
+    CONSTRAINT duration_non_negative CHECK (duration >= 0),
+    CONSTRAINT xp_non_negative CHECK (xp_earned >= 0),
+    CONSTRAINT valid_status CHECK (status IN ('active', 'paused', 'completed', 'cancelled', 'abandoned')),
+    CONSTRAINT ended_after_started CHECK (ended_at IS NULL OR ended_at >= started_at),
+    CONSTRAINT end_after_start CHECK (ended_at IS NULL OR ended_at >= started_at)
 );
 
 -- Indexes for faster queries
 CREATE INDEX idx_sessions_student ON study_sessions(student_id);
 CREATE INDEX idx_sessions_date ON study_sessions(started_at);
+CREATE INDEX idx_sessions_started_at ON study_sessions(started_at);
 CREATE INDEX idx_sessions_status ON study_sessions(status);
+CREATE INDEX idx_sessions_is_active ON study_sessions(is_active);
 
 -- ============================================
 -- ACHIEVEMENTS TABLE
@@ -178,6 +192,12 @@ CREATE TRIGGER update_students_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+-- Trigger for study_sessions table
+CREATE TRIGGER update_study_sessions_updated_at 
+    BEFORE UPDATE ON study_sessions
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
 -- Function to calculate points from study duration
 CREATE OR REPLACE FUNCTION calculate_session_points(duration INTEGER)
 RETURNS INTEGER AS $$
@@ -202,10 +222,12 @@ BEGIN
     IF NEW.status = 'completed' THEN
         UPDATE students
         SET 
-            total_study_minutes = total_study_minutes + NEW.duration_minutes,
+            total_study_minutes = total_study_minutes + COALESCE(NEW.duration_minutes, NEW.duration, 0),
+            total_study_time = total_study_time + COALESCE(NEW.duration_minutes, NEW.duration, 0),
             total_sessions = total_sessions + 1,
-            total_points = total_points + NEW.points_earned,
-            experience_points = experience_points + NEW.experience_gained
+            total_points = total_points + COALESCE(NEW.points_earned, 0),
+            experience_points = experience_points + COALESCE(NEW.experience_gained, NEW.xp_earned, 0),
+            xp = xp + COALESCE(NEW.experience_gained, NEW.xp_earned, 0)
         WHERE id = NEW.student_id;
     END IF;
     RETURN NEW;
@@ -271,8 +293,8 @@ SELECT
     s.username,
     ss.subject,
     ss.topic,
-    ss.duration_minutes,
-    ss.points_earned,
+    COALESCE(ss.duration_minutes, ss.duration, 0) as duration_minutes,
+    COALESCE(ss.points_earned, 0) as points_earned,
     ss.started_at,
     ss.ended_at,
     ss.status
@@ -290,9 +312,6 @@ COMMENT ON TABLE student_achievements IS 'Unlocked achievements per student';
 COMMENT ON TABLE daily_goals IS 'Daily study targets and progress';
 
 -- ============================================
--- GRANT PERMISSIONS (Supabase handles this automatically)
+-- SUCCESS MESSAGE
 -- ============================================
--- No need to manually grant permissions
--- Supabase manages authentication and RLS policies
-
 SELECT 'Database schema created successfully! 🎉' as message;
