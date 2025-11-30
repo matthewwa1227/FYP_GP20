@@ -123,6 +123,16 @@ router.post('/check', authenticateToken, async (req, res) => {
     }
 
     const stats = studentResult.rows[0];
+    
+    // 🔧 ADD THIS: Get max session duration for single_session_minutes achievements
+    const maxSessionResult = await db.query(`
+      SELECT MAX(duration) as max_duration
+      FROM study_sessions
+      WHERE student_id = $1 AND status = 'completed'
+    `, [studentId]);
+    
+    const maxSessionDuration = maxSessionResult.rows[0]?.max_duration || 0;
+    
     const newlyUnlocked = [];
 
     // Get all achievements not yet unlocked
@@ -148,6 +158,10 @@ router.post('/check', authenticateToken, async (req, res) => {
           break;
         case 'streak_days':
           unlocked = stats.current_streak >= achievement.requirement_value;
+          break;
+        // 🔧 ADD THIS CASE:
+        case 'single_session_minutes':
+          unlocked = maxSessionDuration >= achievement.requirement_value;
           break;
       }
 
