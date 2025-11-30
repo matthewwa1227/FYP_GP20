@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+
 require('dotenv').config();
 
 const app = express();
@@ -11,6 +12,8 @@ app.use(express.json());
 
 // Import database connection
 const db = require('./db/connection');
+const sessionsRouter = require('./routes/sessions');
+app.use('/api/sessions', sessionsRouter);
 
 // Test database connection on startup
 (async () => {
@@ -23,7 +26,10 @@ const db = require('./db/connection');
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
-
+// Import session routes (add this with other route imports)
+const sessionRoutes = require('./routes/sessions');
+// Register routes (add this with other route registrations)
+app.use('/api/sessions', sessionRoutes);
 // Health check with database status
 app.get('/api/health', async (req, res) => {
   let dbStatus = 'disconnected';
