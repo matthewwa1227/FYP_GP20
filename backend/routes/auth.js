@@ -287,4 +287,26 @@ router.get('/profile', authenticateToken, async (req, res) => {
   }
 });
 
+router.get('/inspect-sessions-schema', async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT column_name, data_type, is_nullable
+      FROM information_schema.columns
+      WHERE table_name = 'study_sessions'
+      ORDER BY ordinal_position;
+    `);
+    
+    res.json({
+      success: true,
+      table: 'study_sessions',
+      columns: result.rows
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;

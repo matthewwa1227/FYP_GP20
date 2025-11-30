@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-
 require('dotenv').config();
 
 const app = express();
@@ -12,8 +11,6 @@ app.use(express.json());
 
 // Import database connection
 const db = require('./db/connection');
-const sessionsRouter = require('./routes/sessions');
-app.use('/api/sessions', sessionsRouter);
 
 // Test database connection on startup
 (async () => {
@@ -24,12 +21,32 @@ app.use('/api/sessions', sessionsRouter);
   }
 })();
 
-// Routes
+// ============================================
+// ROUTES - Organized by feature
+// ============================================
+
+// Authentication
 app.use('/api/auth', require('./routes/auth'));
-// Import session routes (add this with other route imports)
-const sessionRoutes = require('./routes/sessions');
-// Register routes (add this with other route registrations)
-app.use('/api/sessions', sessionRoutes);
+
+// Study Sessions
+app.use('/api/sessions', require('./routes/sessions'));
+
+// Student Features
+app.use('/api/student', require('./routes/student'));
+
+// Achievements System
+app.use('/api/achievements', require('./routes/achievements'));
+
+// Leaderboard
+app.use('/api/leaderboard', require('./routes/leaderboard'));
+
+// Dashboard
+app.use('/api/dashboard', require('./routes/dashboard'));
+
+// ============================================
+// HEALTH & TEST ENDPOINTS
+// ============================================
+
 // Health check with database status
 app.get('/api/health', async (req, res) => {
   let dbStatus = 'disconnected';
@@ -47,7 +64,7 @@ app.get('/api/health', async (req, res) => {
   res.json({ 
     status: 'Server is running!', 
     timestamp: new Date(),
-    environment: process.env.NODE_ENV,
+    environment: process.env.NODE_ENV || 'development',
     database: {
       status: dbStatus,
       message: dbMessage
@@ -58,9 +75,9 @@ app.get('/api/health', async (req, res) => {
 // Database test endpoint
 app.get('/api/db/test', async (req, res) => {
   try {
-    // Test basic query
     const result = await db.query('SELECT COUNT(*) as student_count FROM students');
     const achievements = await db.query('SELECT COUNT(*) as achievement_count FROM achievements');
+    const sessions = await db.query('SELECT COUNT(*) as session_count FROM study_sessions');
     
     res.json({
       success: true,
@@ -68,6 +85,7 @@ app.get('/api/db/test', async (req, res) => {
       data: {
         students: result.rows[0].student_count,
         achievements: achievements.rows[0].achievement_count,
+        sessions: sessions.rows[0].session_count,
         tables: ['students', 'study_sessions', 'achievements', 'student_achievements', 'daily_goals']
       }
     });
@@ -80,17 +98,22 @@ app.get('/api/db/test', async (req, res) => {
   }
 });
 
+// ============================================
+// ERROR HANDLERS
+// ============================================
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: 'Route not found'
+    message: 'Route not found',
+    path: req.path
   });
 });
 
 // Error handler
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error('❌ Error:', err.stack);
   res.status(500).json({
     success: false,
     message: 'Something went wrong!',
@@ -98,13 +121,38 @@ app.use((err, req, res, next) => {
   });
 });
 
+// ============================================
+// START SERVER
+// ============================================
+
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`\n${'='.repeat(50)}`);
+  console.log(`🚀 StudyQuest API Server`);
+  console.log(`${'='.repeat(50)}`);
+  console.log(`📍 Port: ${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`\n📍 Available endpoints:`);
-  console.log(`   - GET  http://localhost:${PORT}/api/health`);
-  console.log(`   - GET  http://localhost:${PORT}/api/db/test`);
-  console.log(`   - GET  http://localhost:${PORT}/api/auth/health`);
-  console.log(`   - POST http://localhost:${PORT}/api/auth/register`);
-  console.log(`   - POST http://localhost:${PORT}/api/auth/login`);
+  console.log(`\n📚 Available Endpoints:`);
+  console.log(`\n   Health & Database:`);
+  console.log(`   - GET  /api/health`);
+  console.log(`   - GET  /api/db/test`);
+  console.log(`\n   Authentication:`);
+  console.log(`   - POST /api/auth/register`);
+  console.log(`   - POST /api/auth/login`);
+  console.log(`   - GET  /api/auth/health`);
+  console.log(`\n   Study Sessions:`);
+  console.log(`   - POST /api/sessions/start`);
+  console.log(`   - POST /api/sessions/:id/end`);
+  console.log(`   - GET  /api/sessions/active`);
+  console.log(`   - GET  /api/sessions/history`);
+  console.log(`\n   Achievements:`);
+  console.log(`   - GET  /api/achievements`);
+  console.log(`   - GET  /api/achievements/student`);
+  console.log(`   - POST /api/achievements/check`);
+  console.log(`\n   Leaderboard:`);
+  console.log(`   - GET  /api/leaderboard/global`);
+  console.log(`   - GET  /api/leaderboard/my-rank`);
+  console.log(`\n   Dashboard:`);
+  console.log(`   - GET  /api/dashboard`);
+  console.log(`   - GET  /api/dashboard/stats/weekly`);
+  console.log(`${'='.repeat(50)}\n`);
 });
