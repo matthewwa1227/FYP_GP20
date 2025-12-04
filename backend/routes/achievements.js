@@ -1,55 +1,17 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../db/connection');
 const { authenticateToken } = require('../middleware/auth');
+const pool = require('../db/connection');
 
 // ============================================
-// GET /api/achievements - Get All Achievements
+// GET /api/achievements - Get all achievements with progress
 // ============================================
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const result = await db.query(`
-      SELECT 
-        id, name, description, icon, category,
-        requirement_type, requirement_value,
-        points_reward, badge_tier,
-        created_at
-      FROM achievements
-      ORDER BY 
-        CASE badge_tier
-          WHEN 'bronze' THEN 1
-          WHEN 'silver' THEN 2
-          WHEN 'gold' THEN 3
-          WHEN 'platinum' THEN 4
-        END,
-        requirement_value ASC
-    `);
-
-    res.json({
-      success: true,
-      count: result.rows.length,
-      achievements: result.rows
-    });
-
-  } catch (error) {
-    console.error('Get achievements error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch achievements',
-      error: error.message
-    });
-  }
-});
-
-// ============================================
-// GET /api/achievements/student - Get Student's Achievements
-// ============================================
-router.get('/student', authenticateToken, async (req, res) => {
-  try {
     const studentId = req.student.id;
 
-    // Get all achievements with unlock status
-    const result = await db.query(`
+    // Get all achievements with student's progress
+    const achievementsQuery = `
       SELECT 
         a.id,
         a.name,
@@ -61,148 +23,220 @@ router.get('/student', authenticateToken, async (req, res) => {
         a.points_reward,
         a.badge_tier,
         sa.unlocked_at,
-        CASE WHEN sa.id IS NOT NULL THEN true ELSE false END as unlocked
+        sa.progress,
+        CASE 
+          WHEN sa.unlocked_at IS NOT NULL THEN true
+          ELSE false
+        END as unlocked,
+        CASE 
+          WHEN sa.progress IS NOT NULL THEN 
+            ROUND((sa.progress::decimal / a.requirement_value * 100), 2)
+          ELSE 0
+        END as progress_percentage
       FROM achievements a
       LEFT JOIN student_achievements sa 
         ON a.id = sa.achievement_id AND sa.student_id = $1
-      ORDER BY 
-        unlocked DESC,
-        CASE a.badge_tier
-          WHEN 'bronze' THEN 1
-          WHEN 'silver' THEN 2
-          WHEN 'gold' THEN 3
-          WHEN 'platinum' THEN 4
-        END,
-        a.requirement_value ASC
-    `, [studentId]);
+      WHERE a.is_active = true
+      ORDER BY a.badge_tier, a.requirement_value
+    `;
 
-    const achievements = result.rows;
-    const unlocked = achievements.filter(a => a.unlocked);
-    const locked = achievements.filter(a => !a.unlocked);
+    const achievementsResult = await pool.query(achievementsQuery, [studentId]);
+    
+    // Group achievements by category
+    const groupedAchievements = {
+      milestone: [],
+      time: [],
+      streak: [],
+      focus: []
+    };
+
+    achievementsResult.rows.forEach(achievement => {
+      if (groupedAchievements[achievement.category]) {
+        groupedAchievements[achievement.category].push(achievement);
+      }
+    });
+
+    // Calculate stats
+    const totalAchievements = achievementsResult.rows.length;
+    const unlockedAchievements = achievementsResult.rows.filter(a => a.unlocked).length;
+    const completionPercentage = totalAchievements > 0 
+      ? ((unlockedAchievements / totalAchievements) * 100).toFixed(1)
+      : 0;
 
     res.json({
-      success: true,
-      total: achievements.length,
-      unlocked: unlocked.length,
-      locked: locked.length,
-      achievements,
-      unlockedAchievements: unlocked,
-      lockedAchievements: locked
+      achievements: groupedAchievements,
+      stats: {
+        total: totalAchievements,
+        unlocked: unlockedAchievements,
+        locked: totalAchievements - unlockedAchievements,
+        completion_percentage: parseFloat(completionPercentage)
+      }
     });
 
   } catch (error) {
-    console.error('Get student achievements error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch student achievements',
-      error: error.message
+    console.error('Error fetching achievements:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch achievements',
+      details: error.message 
     });
   }
 });
 
 // ============================================
-// POST /api/achievements/check - Check & Unlock Achievements
+// POST /api/achievements/check - Check and unlock achievements
 // ============================================
 router.post('/check', authenticateToken, async (req, res) => {
   try {
-    const studentId = req.student.id;
-
-    // Get student stats
-    const studentResult = await db.query(`
-      SELECT 
-        total_sessions, total_study_time, current_streak
-      FROM students
-      WHERE id = $1
-    `, [studentId]);
-
-    if (studentResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Student not found'
-      });
-    }
-
-    const stats = studentResult.rows[0];
-    
-    // 🔧 ADD THIS: Get max session duration for single_session_minutes achievements
-    const maxSessionResult = await db.query(`
-      SELECT MAX(duration) as max_duration
-      FROM study_sessions
-      WHERE student_id = $1 AND status = 'completed'
-    `, [studentId]);
-    
-    const maxSessionDuration = maxSessionResult.rows[0]?.max_duration || 0;
-    
+    const studentId = req.user.userId;
     const newlyUnlocked = [];
 
-    // Get all achievements not yet unlocked
-    const achievementsResult = await db.query(`
-      SELECT a.*
+    // Get student stats
+    const studentQuery = `
+      SELECT 
+        total_sessions,
+        total_study_minutes,
+        streak_days
+      FROM students
+      WHERE id = $1
+    `;
+    const studentResult = await pool.query(studentQuery, [studentId]);
+    const student = studentResult.rows[0];
+
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    // Get all active achievements not yet unlocked by this student
+    const unlockedQuery = `
+      SELECT a.id, a.requirement_type, a.requirement_value, a.points_reward
       FROM achievements a
-      WHERE NOT EXISTS (
-        SELECT 1 FROM student_achievements sa
-        WHERE sa.achievement_id = a.id AND sa.student_id = $1
-      )
-    `, [studentId]);
+      LEFT JOIN student_achievements sa 
+        ON a.id = sa.achievement_id AND sa.student_id = $1
+      WHERE a.is_active = true AND sa.unlocked_at IS NULL
+    `;
+    const unlockedResult = await pool.query(unlockedQuery, [studentId]);
 
     // Check each achievement
-    for (const achievement of achievementsResult.rows) {
-      let unlocked = false;
+    for (const achievement of unlockedResult.rows) {
+      let progress = 0;
+      let shouldUnlock = false;
 
       switch (achievement.requirement_type) {
         case 'sessions_count':
-          unlocked = stats.total_sessions >= achievement.requirement_value;
+          progress = student.total_sessions;
+          shouldUnlock = progress >= achievement.requirement_value;
           break;
+
         case 'total_minutes':
-          unlocked = stats.total_study_time >= achievement.requirement_value;
+          progress = student.total_study_minutes;
+          shouldUnlock = progress >= achievement.requirement_value;
           break;
+
         case 'streak_days':
-          unlocked = stats.current_streak >= achievement.requirement_value;
+          progress = student.streak_days;
+          shouldUnlock = progress >= achievement.requirement_value;
           break;
-        // 🔧 ADD THIS CASE:
+
         case 'single_session_minutes':
-          unlocked = maxSessionDuration >= achievement.requirement_value;
+          // Check if student has any session meeting this duration
+          const sessionQuery = `
+            SELECT COUNT(*) as count
+            FROM study_sessions
+            WHERE student_id = $1 
+              AND duration_minutes >= $2
+              AND status = 'completed'
+          `;
+          const sessionResult = await pool.query(sessionQuery, [
+            studentId,
+            achievement.requirement_value
+          ]);
+          progress = parseInt(sessionResult.rows[0].count);
+          shouldUnlock = progress > 0;
           break;
       }
 
-      if (unlocked) {
+      // Update or insert progress
+      if (shouldUnlock) {
         // Unlock the achievement
-        await db.query(`
-          INSERT INTO student_achievements (student_id, achievement_id, unlocked_at)
-          VALUES ($1, $2, NOW())
-          ON CONFLICT (student_id, achievement_id) DO NOTHING
-        `, [studentId, achievement.id]);
+        await pool.query(`
+          INSERT INTO student_achievements (student_id, achievement_id, progress, unlocked_at)
+          VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+          ON CONFLICT (student_id, achievement_id) 
+          DO UPDATE SET unlocked_at = CURRENT_TIMESTAMP, progress = $3
+        `, [studentId, achievement.id, progress]);
 
-        // Award points
-        await db.query(`
+        // Award points to student
+        await pool.query(`
           UPDATE students
           SET total_points = total_points + $1
           WHERE id = $2
         `, [achievement.points_reward, studentId]);
 
         newlyUnlocked.push({
-          id: achievement.id,
-          name: achievement.name,
-          description: achievement.description,
-          icon: achievement.icon,
-          pointsRewarded: achievement.points_reward,
-          tier: achievement.badge_tier
+          achievement_id: achievement.id,
+          points_earned: achievement.points_reward
         });
+      } else {
+        // Just update progress
+        await pool.query(`
+          INSERT INTO student_achievements (student_id, achievement_id, progress)
+          VALUES ($1, $2, $3)
+          ON CONFLICT (student_id, achievement_id) 
+          DO UPDATE SET progress = $3
+        `, [studentId, achievement.id, progress]);
       }
     }
 
     res.json({
-      success: true,
-      newlyUnlocked: newlyUnlocked.length,
-      achievements: newlyUnlocked
+      message: 'Achievements checked',
+      newly_unlocked: newlyUnlocked,
+      count: newlyUnlocked.length
     });
 
   } catch (error) {
-    console.error('Check achievements error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to check achievements',
-      error: error.message
+    console.error('Error checking achievements:', error);
+    res.status(500).json({ 
+      error: 'Failed to check achievements',
+      details: error.message 
+    });
+  }
+});
+
+// ============================================
+// GET /api/achievements/recent - Get recently unlocked achievements
+// ============================================
+router.get('/recent', authenticateToken, async (req, res) => {
+  try {
+    const studentId = req.user.userId;
+
+    const recentQuery = `
+      SELECT 
+        a.id,
+        a.name,
+        a.description,
+        a.icon,
+        a.badge_tier,
+        a.points_reward,
+        sa.unlocked_at
+      FROM student_achievements sa
+      JOIN achievements a ON sa.achievement_id = a.id
+      WHERE sa.student_id = $1 
+        AND sa.unlocked_at IS NOT NULL
+      ORDER BY sa.unlocked_at DESC
+      LIMIT 5
+    `;
+
+    const result = await pool.query(recentQuery, [studentId]);
+
+    res.json({
+      recent_achievements: result.rows
+    });
+
+  } catch (error) {
+    console.error('Error fetching recent achievements:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch recent achievements',
+      details: error.message 
     });
   }
 });
