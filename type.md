@@ -715,3 +715,34 @@ COMMENT ON TABLE daily_goals IS 'Daily study targets and progress';
 SELECT 'Database schema created successfully! 🎉' as message;
 
 I have complete backend,db setting,github sitting , Study Session API , can register user with hashed password, Authentication System, backend connect to supabase 
+
+dir /s /b
+
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src>dir /s /b
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\App.js
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\App.test.js
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\components
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\index.css
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\index.js
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\logo.svg
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\reportWebVitals.js
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\setupTests.js
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\utils
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\components\auth
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\components\dashboard
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\components\shared
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\components\StudyTimer
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\components\auth\Login.jsx
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\components\auth\Register.jsx
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\components\dashboard\CourseCard.jsx
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\components\dashboard\Dashboard.jsx
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\components\shared\Navbar.jsx
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\components\shared\PixelButton.jsx
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\components\shared\PixelCard.jsx
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\components\shared\ProgressBar.jsx
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\components\shared\StatCard.jsx
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\components\StudyTimer\StudyTimer.jsx
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\utils\api.js
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src\utils\auth.js
+
+C:\Users\eeapp\OneDrive\Desktop\FYP_GP20\frontend\src>
