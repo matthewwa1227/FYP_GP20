@@ -85,7 +85,7 @@ router.post('/end/:sessionId', authenticateToken, async (req, res) => {
         await client.query('BEGIN');
         
         const { sessionId } = req.params;
-        const { notes } = req.body;
+        const { notes, duration } = req.body; // ✅ Accept duration from frontend
         const studentId = req.student.id;
         
         // Get the active session
@@ -105,12 +105,19 @@ router.post('/end/:sessionId', authenticateToken, async (req, res) => {
         
         const session = sessionResult.rows[0];
         
-        // Calculate session duration
-        const startedAt = new Date(session.started_at);
-        const endedAt = new Date();
-        const durationMinutes = Math.floor((endedAt - startedAt) / (1000 * 60));
+        // ✅ FIXED: Use frontend duration OR calculate from timestamps
+        let durationMinutes;
+        if (duration !== undefined && duration !== null) {
+            // Use duration sent from frontend (converted from seconds to minutes)
+            durationMinutes = Math.floor(duration / 60);
+        } else {
+            // Fallback: Calculate from database timestamps
+            const startedAt = new Date(session.started_at);
+            const endedAt = new Date();
+            durationMinutes = Math.floor((endedAt - startedAt) / (1000 * 60));
+        }
         
-        // Minimum session duration: 1 minute
+        // ✅ Ensure minimum duration
         if (durationMinutes < 1) {
             await client.query('ROLLBACK');
             return res.status(400).json({
@@ -119,8 +126,10 @@ router.post('/end/:sessionId', authenticateToken, async (req, res) => {
             });
         }
         
-        // Calculate XP gained
-        const xpGained = calculateXP(durationMinutes);
+        // ✅ Calculate XP and points using your gamification utils
+        const { xp: xpGained, points: pointsGained } = calculateSessionRewards(durationMinutes);
+        
+        console.log(`📊 Session rewards: ${durationMinutes} min = ${xpGained} XP, ${pointsGained} points`);
         
         // Get current student stats (before update)
         const oldStatsResult = await client.query(
@@ -138,14 +147,15 @@ router.post('/end/:sessionId', authenticateToken, async (req, res) => {
         // Update session record
         await client.query(
             `UPDATE study_sessions 
-            SET ended_at = $1, 
-                duration = $2,  
-                xp_earned = $3,  
+            SET ended_at = NOW(), 
+                duration = $1,  
+                xp_earned = $2,  
                 is_active = false, 
                 status = 'completed',
-                notes = $4
-            WHERE id = $5`,
-            [endedAt, durationMinutes, xpGained, notes || null, sessionId]
+                notes = $3,
+                updated_at = NOW()
+            WHERE id = $4`,
+            [durationMinutes, xpGained, notes || null, sessionId]
         );
         
         // Update student stats
@@ -190,6 +200,9 @@ router.post('/end/:sessionId', authenticateToken, async (req, res) => {
         
         await client.query('COMMIT');
         
+        // Get motivational message
+        const motivation = getMotivationalMessage(durationMinutes);
+        
         // Generate session summary
         const summary = generateSessionSummary(
             updatedSession.rows[0], 
@@ -202,11 +215,12 @@ router.post('/end/:sessionId', authenticateToken, async (req, res) => {
         
         res.json({
             success: true,
-            message: '🎉 Study session completed!',
+            message: motivation.title,
             session: updatedSession.rows[0],
             summary: {
                 ...summary,
-                levelProgress
+                levelProgress,
+                motivation
             },
             stats: {
                 level: newStats.level,
@@ -416,6 +430,38 @@ router.get('/stats', authenticateToken, async (req, res) => {
             success: false, 
             message: 'Failed to get statistics',
             error: error.message 
+        });
+    }
+});
+
+// ============================================
+// POST /api/sessions/abandon/:sessionId
+// Abandon an active session (for page refresh recovery)
+// ============================================
+router.post('/abandon/:sessionId', authenticateToken, async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const studentId = req.student.id;
+        
+        await pool.query(
+            `UPDATE study_sessions 
+            SET is_active = false, 
+                status = 'abandoned',
+                ended_at = NOW()
+            WHERE id = $1 AND student_id = $2 AND is_active = true`,
+            [sessionId, studentId]
+        );
+        
+        res.json({
+            success: true,
+            message: 'Session abandoned'
+        });
+        
+    } catch (error) {
+        console.error('Error abandoning session:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Failed to abandon session'
         });
     }
 });
