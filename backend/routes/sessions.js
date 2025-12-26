@@ -75,17 +75,17 @@ router.post('/start', authenticateToken, async (req, res) => {
 });
 
 // ============================================
-// POST /api/sessions/end/:sessionId
+// POST /api/sessions/:sessionId/end
 // End an active study session
 // ============================================
-router.post('/end/:sessionId', authenticateToken, async (req, res) => {
+router.post('/:sessionId/end', authenticateToken, async (req, res) => {
     const client = await pool.connect();
     
     try {
         await client.query('BEGIN');
         
         const { sessionId } = req.params;
-        const { notes, duration } = req.body; // ✅ Accept duration from frontend
+        const { notes, duration } = req.body;
         const studentId = req.student.id;
         
         // Get the active session
@@ -105,19 +105,17 @@ router.post('/end/:sessionId', authenticateToken, async (req, res) => {
         
         const session = sessionResult.rows[0];
         
-        // ✅ FIXED: Use frontend duration OR calculate from timestamps
+        // ✅ Calculate duration in minutes
         let durationMinutes;
         if (duration !== undefined && duration !== null) {
-            // Use duration sent from frontend (converted from seconds to minutes)
-            durationMinutes = Math.floor(duration / 60);
+            durationMinutes = Math.floor(duration);
         } else {
-            // Fallback: Calculate from database timestamps
             const startedAt = new Date(session.started_at);
             const endedAt = new Date();
             durationMinutes = Math.floor((endedAt - startedAt) / (1000 * 60));
         }
         
-        // ✅ Ensure minimum duration
+        // ✅ Check minimum duration
         if (durationMinutes < 1) {
             await client.query('ROLLBACK');
             return res.status(400).json({
@@ -126,12 +124,12 @@ router.post('/end/:sessionId', authenticateToken, async (req, res) => {
             });
         }
         
-        // ✅ Calculate XP and points using your gamification utils
-        const { xp: xpGained, points: pointsGained } = calculateSessionRewards(durationMinutes);
+        // ✅ Calculate XP using the imported calculateXP function
+        const xpGained = calculateXP(durationMinutes);
         
-        console.log(`📊 Session rewards: ${durationMinutes} min = ${xpGained} XP, ${pointsGained} points`);
+        console.log(`📊 Session rewards: ${durationMinutes} min = ${xpGained} XP`);
         
-        // Get current student stats (before update)
+        // Get current student stats
         const oldStatsResult = await client.query(
             'SELECT * FROM students WHERE id = $1',
             [studentId]
@@ -200,8 +198,14 @@ router.post('/end/:sessionId', authenticateToken, async (req, res) => {
         
         await client.query('COMMIT');
         
-        // Get motivational message
-        const motivation = getMotivationalMessage(durationMinutes);
+        // ✅ Generate motivational message based on duration
+        const motivation = {
+            title: durationMinutes >= 60 ? '🌟 Amazing Focus!' :
+                   durationMinutes >= 30 ? '💪 Great Session!' :
+                   durationMinutes >= 15 ? '✨ Good Work!' :
+                   '📚 Session Complete!',
+            message: `You studied for ${durationMinutes} minutes and earned ${xpGained} XP!`
+        };
         
         // Generate session summary
         const summary = generateSessionSummary(
