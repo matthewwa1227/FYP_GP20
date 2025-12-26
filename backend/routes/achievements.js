@@ -87,15 +87,18 @@ router.get('/', authenticateToken, async (req, res) => {
 // ============================================
 router.post('/check', authenticateToken, async (req, res) => {
   try {
-    const studentId = req.user.userId;
+    const studentId = req.student.id;
     const newlyUnlocked = [];
+
+    console.log('\n🎯 ========== CHECKING ACHIEVEMENTS ==========');
+    console.log(`👤 Student ID: ${studentId}`);
 
     // Get student stats
     const studentQuery = `
       SELECT 
         total_sessions,
-        total_study_minutes,
-        streak_days
+        total_study_time,
+        current_streak
       FROM students
       WHERE id = $1
     `;
@@ -106,9 +109,14 @@ router.post('/check', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Student not found' });
     }
 
+    console.log('\n📊 Current Stats:');
+    console.log(`   Total Sessions: ${student.total_sessions}`);
+    console.log(`   Total Study Time: ${student.total_study_time} minutes`);
+    console.log(`   Current Streak: ${student.current_streak} days`);
+
     // Get all active achievements not yet unlocked by this student
     const unlockedQuery = `
-      SELECT a.id, a.requirement_type, a.requirement_value, a.points_reward
+      SELECT a.id, a.name, a.requirement_type, a.requirement_value, a.points_reward
       FROM achievements a
       LEFT JOIN student_achievements sa 
         ON a.id = sa.achievement_id AND sa.student_id = $1
@@ -116,25 +124,37 @@ router.post('/check', authenticateToken, async (req, res) => {
     `;
     const unlockedResult = await pool.query(unlockedQuery, [studentId]);
 
+    console.log(`\n🔓 Found ${unlockedResult.rows.length} locked achievements to check\n`);
+
     // Check each achievement
     for (const achievement of unlockedResult.rows) {
       let progress = 0;
       let shouldUnlock = false;
 
+      console.log(`\n🔍 Checking: "${achievement.name}"`);
+      console.log(`   Type: ${achievement.requirement_type}`);
+      console.log(`   Required: ${achievement.requirement_value}`);
+
       switch (achievement.requirement_type) {
         case 'sessions_count':
           progress = student.total_sessions;
           shouldUnlock = progress >= achievement.requirement_value;
+          console.log(`   Your Progress: ${progress} sessions`);
+          console.log(`   Should Unlock: ${shouldUnlock ? '✅ YES' : '❌ NO'}`);
           break;
 
         case 'total_minutes':
-          progress = student.total_study_minutes;
+          progress = student.total_study_time;
           shouldUnlock = progress >= achievement.requirement_value;
+          console.log(`   Your Progress: ${progress} minutes`);
+          console.log(`   Should Unlock: ${shouldUnlock ? '✅ YES' : '❌ NO'}`);
           break;
 
         case 'streak_days':
-          progress = student.streak_days;
+          progress = student.current_streak;
           shouldUnlock = progress >= achievement.requirement_value;
+          console.log(`   Your Progress: ${progress} days`);
+          console.log(`   Should Unlock: ${shouldUnlock ? '✅ YES' : '❌ NO'}`);
           break;
 
         case 'single_session_minutes':
@@ -143,7 +163,7 @@ router.post('/check', authenticateToken, async (req, res) => {
             SELECT COUNT(*) as count
             FROM study_sessions
             WHERE student_id = $1 
-              AND duration_minutes >= $2
+              AND duration >= $2
               AND status = 'completed'
           `;
           const sessionResult = await pool.query(sessionQuery, [
@@ -152,11 +172,16 @@ router.post('/check', authenticateToken, async (req, res) => {
           ]);
           progress = parseInt(sessionResult.rows[0].count);
           shouldUnlock = progress > 0;
+          console.log(`   Sessions >= ${achievement.requirement_value} min: ${progress}`);
+          console.log(`   Should Unlock: ${shouldUnlock ? '✅ YES' : '❌ NO'}`);
           break;
       }
 
       // Update or insert progress
       if (shouldUnlock) {
+        console.log(`   🎉 UNLOCKING ACHIEVEMENT!`);
+        console.log(`   Points Awarded: ${achievement.points_reward}`);
+        
         // Unlock the achievement
         await pool.query(`
           INSERT INTO student_achievements (student_id, achievement_id, progress, unlocked_at)
@@ -174,9 +199,11 @@ router.post('/check', authenticateToken, async (req, res) => {
 
         newlyUnlocked.push({
           achievement_id: achievement.id,
+          achievement_name: achievement.name,
           points_earned: achievement.points_reward
         });
       } else {
+        console.log(`   📝 Updating progress only`);
         // Just update progress
         await pool.query(`
           INSERT INTO student_achievements (student_id, achievement_id, progress)
@@ -187,6 +214,15 @@ router.post('/check', authenticateToken, async (req, res) => {
       }
     }
 
+    console.log('\n✨ ========== RESULTS ==========');
+    console.log(`Newly Unlocked: ${newlyUnlocked.length}`);
+    if (newlyUnlocked.length > 0) {
+      newlyUnlocked.forEach(a => {
+        console.log(`   🏆 ${a.achievement_name} (+${a.points_earned} pts)`);
+      });
+    }
+    console.log('================================\n');
+
     res.json({
       message: 'Achievements checked',
       newly_unlocked: newlyUnlocked,
@@ -194,7 +230,7 @@ router.post('/check', authenticateToken, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error checking achievements:', error);
+    console.error('❌ Error checking achievements:', error);
     res.status(500).json({ 
       error: 'Failed to check achievements',
       details: error.message 
@@ -207,7 +243,7 @@ router.post('/check', authenticateToken, async (req, res) => {
 // ============================================
 router.get('/recent', authenticateToken, async (req, res) => {
   try {
-    const studentId = req.user.userId;
+    const studentId = req.student.id;
 
     const recentQuery = `
       SELECT 
