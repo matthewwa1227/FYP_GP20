@@ -1,124 +1,155 @@
-# StudyQuest (FYP_GP20) — Timetable / Progress Plan
+# StudyQuest (FYP_GP20) — Timetable (Week-by-Week)
 
-> Repo structure confirmed:
-> - `backend/` (Express + Supabase Postgres)
-> - `frontend/` (Create React App + Tailwind)
-> Key routes: `routes/auth.js, sessions.js, dashboard.js, achievements.js, leaderboard.js, student.js`
-> Key UI: `Dashboard`, `StudyTimer`, `Achievements`, `Login`, `Register`, shared components.
+> Tech: React (CRA + Tailwind) + Node/Express + Supabase Postgres + JWT Auth  
+> Repos/Folders: `backend/`, `frontend/`, `Doc/`
 
 ---
 
-## ✅ Completed (Current Progress)
-### Backend (Express + Supabase)
-- [x] Project structure created (`server.js`, `db/connection.js`, `middleware/auth.js`)
-- [x] Supabase Postgres connection working (tested)
-- [x] Initial DB schema migration created (`migrations/001_initial_schema.sql`)
-- [x] Authentication system
-  - [x] Register user + hashed password
-  - [x] Login returns JWT token
-  - [x] Auth middleware protects routes (Bearer token)
-  - [x] Profile endpoint works with valid token
-- [x] Study Session API (`routes/sessions.js`)
-  - [x] Start session (returns session UUID)
-  - [x] Get active session
-  - [x] End session
-  - [x] Get statistics
-  - [x] Get history
-- [x] Dashboard API (`routes/dashboard.js`) basic working
-- [x] Achievements API (`routes/achievements.js`) basic working
-- [x] Leaderboard API (`routes/leaderboard.js`) basic working
-- [x] Gamification helper exists (`utils/gamification.js`)
+## Week 1 — Project Setup & Planning ✅
+- ✅ Define project scope + feature list (StudyQuest)
+- ✅ Setup repo structure (backend, frontend, docs)
+- ✅ Setup Supabase project + database
+- ✅ Setup initial documentation (`Doc/idea.md`, report template)
 
-### Frontend (React + Tailwind)
-- [x] Project bootstrapped (CRA) + Tailwind configured
-- [x] Auth pages completed
-  - [x] `Login.jsx`
-  - [x] `Register.jsx`
-  - [x] Token handling (`src/utils/auth.js`)
-- [x] API connector created (`src/utils/api.js`)
-- [x] Main pages/components completed (basic)
-  - [x] Dashboard (`components/dashboard/Dashboard.jsx`)
-  - [x] Study Timer (`components/StudyTimer/StudyTimer.jsx`)
-  - [x] Achievements (`components/Achievements/Achievements.jsx`)
-  - [x] Achievement popup notification (`AchievementNotification.jsx`)
-- [x] Shared UI components created (`Navbar`, `PixelButton`, `PixelCard`, `StatCard`, `ProgressBar`)
+**Output:** Working project structure + clear scope
 
 ---
 
-## 🟡 In Progress (Next Improvements)
-### Week 1 — Hardening + Documentation (Backend + Frontend)
-- [ ] Standardize API response format across all routes (same `{success,message,data}` pattern)
-- [ ] Add request validation for auth + sessions (prevent bad inputs)
-- [ ] Ensure `/auth/register` returns correct “implemented” message + consistent behavior
-- [ ] Add better error handling middleware (Express)
-- [ ] Update `README.md` (root) to explain:
-  - [ ] how to run backend
-  - [ ] how to run frontend
-  - [ ] required `.env` variables
-- [ ] Add simple API test checklist in `Doc/idea.md` or `login.md`
+## Week 2 — Database Design & Migration ✅
+- ✅ Design tables (students, study_sessions, achievements, leaderboard, student_achievements, etc.)
+- ✅ Create initial schema migration  
+  - ✅ `backend/migrations/001_initial_schema.sql`
+- ✅ Setup DB connection utility  
+  - ✅ `backend/db/connection.js`
+- ✅ Test DB connection from backend (successful)
 
-**Deliverable:** Clean API contract + updated docs + stable dev experience
+**Output:** Supabase Postgres connected + schema created
 
 ---
 
-## ⬜ Planned Work (To Finish FYP Features)
-### Week 2 — Dashboard Upgrade (Real Analytics)
-- [ ] Improve dashboard API to return:
-  - [ ] weekly/monthly study minutes
-  - [ ] streak data
-  - [ ] recent sessions list
-- [ ] Add charts to Dashboard (progress trend, minutes)
-- [ ] Add proper empty states (new users)
+## Week 3 — Authentication System ✅
+- ✅ Implement auth routes  
+  - ✅ `backend/routes/auth.js`
+- ✅ Register user with hashed password
+- ✅ Login user + JWT token generation
+- ✅ Auth middleware (protect routes)  
+  - ✅ `backend/middleware/auth.js`
+- ✅ Test with curl:
+  - ✅ `/api/auth/health`
+  - ✅ `/api/auth/register`
+  - ✅ `/api/auth/login`
+  - ✅ `/api/auth/profile` (protected)
 
-**Deliverable:** Dashboard v2 with meaningful analytics
-
----
-
-### Week 3 — Achievements System (Reliable + Automatic)
-- [ ] Implement achievement rule checking after `End Session`
-- [ ] Ensure achievements are idempotent (cannot unlock same achievement twice)
-- [ ] Expand achievements list (5–10 achievements)
-- [ ] Frontend: show locked/unlocked clearly + better achievement popup UX
-
-**Deliverable:** Achievements v1 complete (demo-ready)
+**Output:** Working authentication + protected profile endpoint
 
 ---
 
-### Week 4 — Leaderboard + My Rank (Polish + Performance)
-- [ ] Confirm ranking logic (points/time) and make consistent
-- [ ] Add “My Rank” endpoint if needed (or compute efficiently)
-- [ ] Add pagination / limit top N leaderboard
-- [ ] Frontend leaderboard page/section polish
+## Week 4 — Study Session API ✅
+- ✅ Implement study session routes  
+  - ✅ `backend/routes/sessions.js`
+- ✅ Features completed:
+  - ✅ Start Session (creates UUID)
+  - ✅ Get Active Session
+  - ✅ End Session
+  - ✅ Get Statistics
+  - ✅ Get History
+- ✅ Confirm database write/read works
 
-**Deliverable:** Smooth leaderboard + accurate “My Rank”
-
----
-
-### Week 5 — Student Profile + Settings (MVP)
-- [ ] Profile page (view/edit username/avatar/basic info)
-- [ ] Password change / logout flow
-- [ ] Session history page filters (date range)
-
-**Deliverable:** Complete student account experience
+**Output:** Complete Study Session API (core backend feature)
 
 ---
 
-### Week 6 — Finalization (Testing + Deployment + Report Support)
-- [ ] Basic backend tests (at least auth + sessions routes)
-- [ ] Frontend build check + fix warnings
-- [ ] Deployment plan:
-  - [ ] backend deploy (Render/Railway)
-  - [ ] frontend deploy (Vercel)
-  - [ ] Supabase env + security check
-- [ ] Prepare demo script + screenshots
-- [ ] Update report content based on finished system
+## Week 5 — Dashboard + Frontend Integration ✅
+- ✅ Setup frontend (CRA + Tailwind)
+- ✅ Build API helper + token handling  
+  - ✅ `frontend/src/utils/api.js`
+  - ✅ `frontend/src/utils/auth.js`
+- ✅ Build UI:
+  - ✅ Login + Register (`components/auth`)
+  - ✅ Dashboard UI (`components/dashboard/Dashboard.jsx`)
+  - ✅ Shared UI components (`components/shared/*`)
+- ✅ Frontend successfully connects to backend + DB data
 
-**Deliverable:** Production-ready demo + submission materials
+**Output:** End-to-end flow working (frontend ↔ backend ↔ Supabase)
 
 ---
 
-## Milestone Summary
-- **Milestone A:** Auth + DB + sessions API ✅
-- **Milestone B:** Dashboard + achievements + leaderboard basic ✅
-- **Milestone C:** Hardening + analytics + polish ⬜
-- **Milestone D:** Deployment + final report/demo ⬜
+## Week 6 — Gamification + Achievements ✅
+- ✅ Implement gamification helper  
+  - ✅ `backend/utils/gamification.js`
+- ✅ Achievements API  
+  - ✅ `backend/routes/achievements.js`
+- ✅ Frontend achievements UI:
+  - ✅ `Achievements.jsx`
+  - ✅ `AchievementCard.jsx`
+  - ✅ Achievement popup notification (`AchievementNotification.jsx`)
+
+**Output:** Achievements feature available + popup feedback
+
+---
+
+## Week 7 — Leaderboard + My Rank ✅
+- ✅ Leaderboard API  
+  - ✅ `backend/routes/leaderboard.js`
+- ✅ Student routes as needed  
+  - ✅ `backend/routes/student.js`
+- ✅ Frontend shows leaderboard + “My Rank” (basic)
+
+**Output:** Competitive element working (leaderboard + rank)
+
+---
+
+# Remaining Weeks (Planned Work / Improvements)
+
+## Week 8 — API Hardening & Consistency ⬜
+- ⬜ Standardize API responses across all routes (`success/message/data/error`)
+- ⬜ Add request validation (auth + sessions) to prevent invalid payloads
+- ⬜ Improve error handling (central Express error middleware)
+- ⬜ Ensure `/register` messaging and behavior are consistent everywhere
+- ⬜ Add rate limiting for auth routes (basic security)
+
+**Output:** Stable and consistent API (ready for deployment)
+
+---
+
+## Week 9 — Dashboard Upgrade (Analytics) ⬜
+- ⬜ Improve dashboard endpoint(s) to return:
+  - ⬜ weekly/monthly study minutes
+  - ⬜ streaks (current & longest)
+  - ⬜ recent sessions list
+- ⬜ Add charts (weekly trend) and better empty states in frontend
+
+**Output:** Dashboard v2 with meaningful analytics (demo-ready)
+
+---
+
+## Week 10 — Achievements Reliability (Rule Engine) ⬜
+- ⬜ Evaluate achievements automatically after `End Session`
+- ⬜ Ensure idempotent unlock (no duplicates)
+- ⬜ Expand achievements list (5–10 total)
+- ⬜ Improve achievements page (locked/unlocked UI)
+
+**Output:** Solid achievements system that always works
+
+---
+
+## Week 11 — UI Polish + UX Flow ⬜
+- ⬜ Improve navigation flow (Navbar routes, protected routes)
+- ⬜ Add session history page filters (date range)
+- ⬜ Loading states, error toasts, empty states across pages
+
+**Output:** Smooth user experience end-to-end
+
+---
+
+## Week 12 — Testing + Deployment + Report Materials ⬜
+- ⬜ Add basic backend tests (auth + sessions)
+- ⬜ Build frontend production bundle + fix warnings
+- ⬜ Deploy:
+  - ⬜ Backend (Render/Railway)
+  - ⬜ Frontend (Vercel)
+  - ⬜ Supabase env + security check
+- ⬜ Prepare demo script + screenshots
+- ⬜ Update final report content + diagrams
+
+**Output:** Deployed system + final presentation/report ready
