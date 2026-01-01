@@ -1,16 +1,31 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../db/connection');
-const { authenticateToken } = require('../middleware/auth'); // ✅ Changed here
+const { authenticateToken } = require('../middleware/auth');
 
+// ============================================
 // GET /api/student/profile - Get student profile
-router.get('/profile', authenticateToken, async (req, res) => { // ✅ Changed here
+// ============================================
+router.get('/profile', authenticateToken, async (req, res) => {
   try {
-    const studentId = req.student.id; // ✅ Changed from req.user.id to req.student.id
+    const studentId = req.student.id;
 
     const result = await query(
-      `SELECT id, username, email, level, xp, current_streak, longest_streak, 
-              total_study_time, created_at
+      `SELECT 
+        id, 
+        username, 
+        email, 
+        full_name,
+        bio,
+        avatar_url,
+        level, 
+        xp, 
+        COALESCE(total_points, xp) as total_points,
+        current_streak, 
+        longest_streak, 
+        COALESCE(total_study_time, 0) as total_study_time,
+        COALESCE(total_sessions, 0) as total_sessions,
+        created_at
        FROM students 
        WHERE id = $1`,
       [studentId]
@@ -23,9 +38,28 @@ router.get('/profile', authenticateToken, async (req, res) => { // ✅ Changed h
       });
     }
 
+    // Get subject breakdown
+    const subjectResult = await query(
+      `SELECT 
+        subject as name,
+        COALESCE(SUM(duration), 0) as minutes,
+        COUNT(*) as sessions
+       FROM study_sessions
+       WHERE student_id = $1 AND duration > 0
+       GROUP BY subject
+       ORDER BY minutes DESC`,
+      [studentId]
+    );
+
+    const profile = {
+      ...result.rows[0],
+      subject_stats: subjectResult.rows
+    };
+
     res.json({
       success: true,
-      student: result.rows[0]
+      profile,
+      student: profile // For backwards compatibility
     });
 
   } catch (error) {
@@ -38,18 +72,40 @@ router.get('/profile', authenticateToken, async (req, res) => { // ✅ Changed h
   }
 });
 
+// ============================================
 // PUT /api/student/profile - Update student profile
-router.put('/profile', authenticateToken, async (req, res) => { // ✅ Changed here
+// ============================================
+router.put('/profile', authenticateToken, async (req, res) => {
   try {
-    const studentId = req.student.id; // ✅ Changed from req.user.id
-    const { username, email } = req.body;
+    const studentId = req.student.id;
+    const { username, email, full_name, bio, avatar_url } = req.body;
 
-    // Validate input
-    if (!username && !email) {
+    // Validate input - at least one field required
+    if (!username && !email && !full_name && bio === undefined && !avatar_url) {
       return res.status(400).json({
         success: false,
-        message: 'At least one field (username or email) is required'
+        message: 'At least one field is required to update'
       });
+    }
+
+    // Validate bio length
+    if (bio && bio.length > 200) {
+      return res.status(400).json({
+        success: false,
+        message: 'Bio must be 200 characters or less'
+      });
+    }
+
+    // Validate avatar URL if provided
+    if (avatar_url && avatar_url.length > 0) {
+      try {
+        new URL(avatar_url);
+      } catch {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid avatar URL'
+        });
+      }
     }
 
     // Build dynamic update query
@@ -69,13 +125,31 @@ router.put('/profile', authenticateToken, async (req, res) => { // ✅ Changed h
       paramCount++;
     }
 
+    if (full_name !== undefined) {
+      updateFields.push(`full_name = $${paramCount}`);
+      values.push(full_name || null);
+      paramCount++;
+    }
+
+    if (bio !== undefined) {
+      updateFields.push(`bio = $${paramCount}`);
+      values.push(bio || null);
+      paramCount++;
+    }
+
+    if (avatar_url !== undefined) {
+      updateFields.push(`avatar_url = $${paramCount}`);
+      values.push(avatar_url || null);
+      paramCount++;
+    }
+
     values.push(studentId);
 
     const updateQuery = `
       UPDATE students 
       SET ${updateFields.join(', ')}
       WHERE id = $${paramCount}
-      RETURNING id, username, email, level, xp, current_streak, longest_streak, total_study_time
+      RETURNING id, username, email, full_name, bio, avatar_url, level, xp, current_streak, longest_streak, total_study_time
     `;
 
     const result = await query(updateQuery, values);
@@ -83,7 +157,8 @@ router.put('/profile', authenticateToken, async (req, res) => { // ✅ Changed h
     res.json({
       success: true,
       message: 'Profile updated successfully',
-      student: result.rows[0]
+      student: result.rows[0],
+      profile: result.rows[0]
     });
 
   } catch (error) {
@@ -105,17 +180,30 @@ router.put('/profile', authenticateToken, async (req, res) => { // ✅ Changed h
   }
 });
 
+// ============================================
 // GET /api/student/stats - Get student statistics
-// GET /api/student/stats - Get student statistics
+// ============================================
 router.get('/stats', authenticateToken, async (req, res) => {
   try {
     const studentId = req.student.id;
 
-    // Get student basic info
+    // Get student basic info with all fields
     const studentQuery = await query(
       `SELECT 
-        id, username, email, level, xp, current_streak, longest_streak, 
-        total_study_time, created_at
+        id, 
+        username, 
+        email, 
+        full_name,
+        bio,
+        avatar_url,
+        level, 
+        xp, 
+        COALESCE(total_points, xp) as total_points,
+        current_streak, 
+        longest_streak, 
+        COALESCE(total_study_time, 0) as total_study_time,
+        COALESCE(total_sessions, 0) as total_sessions,
+        created_at
        FROM students 
        WHERE id = $1`,
       [studentId]
@@ -130,11 +218,12 @@ router.get('/stats', authenticateToken, async (req, res) => {
 
     const student = studentQuery.rows[0];
 
-    // Get total sessions count
+    // Get total sessions count from study_sessions
     const sessionsQuery = await query(
-      `SELECT COUNT(*) as total_sessions,
-              COALESCE(SUM(duration), 0) as total_minutes,
-              COALESCE(SUM(xp_earned), 0) as total_session_xp
+      `SELECT 
+        COUNT(*) as total_sessions,
+        COALESCE(SUM(duration), 0) as total_minutes,
+        COALESCE(SUM(xp_earned), 0) as total_session_xp
        FROM study_sessions 
        WHERE student_id = $1 AND ended_at IS NOT NULL`,
       [studentId]
@@ -157,10 +246,16 @@ router.get('/stats', authenticateToken, async (req, res) => {
       [studentId]
     );
 
-    // Get recent sessions (last 7 days) - ✅ Removed pause_count
+    // Get recent sessions (last 7 days)
     const recentSessionsQuery = await query(
       `SELECT 
-        id, subject, started_at, ended_at, duration, xp_earned, created_at
+        id, 
+        subject, 
+        started_at, 
+        ended_at, 
+        duration, 
+        xp_earned, 
+        created_at
        FROM study_sessions 
        WHERE student_id = $1 
        AND started_at >= NOW() - INTERVAL '7 days'
@@ -169,15 +264,30 @@ router.get('/stats', authenticateToken, async (req, res) => {
       [studentId]
     );
 
+    // Get subject breakdown
+    const subjectQuery = await query(
+      `SELECT 
+        subject as name,
+        COALESCE(SUM(duration), 0) as minutes,
+        COUNT(*) as sessions
+       FROM study_sessions
+       WHERE student_id = $1 AND duration > 0
+       GROUP BY subject
+       ORDER BY minutes DESC`,
+      [studentId]
+    );
+
     // Combine all data
     const stats = {
       ...student,
-      total_sessions: parseInt(sessionsQuery.rows[0].total_sessions) || 0,
+      total_sessions: parseInt(sessionsQuery.rows[0].total_sessions) || student.total_sessions || 0,
       total_minutes: parseInt(sessionsQuery.rows[0].total_minutes) || 0,
+      total_study_minutes: parseInt(sessionsQuery.rows[0].total_minutes) || student.total_study_time || 0,
       total_session_xp: parseInt(sessionsQuery.rows[0].total_session_xp) || 0,
       sessions_today: parseInt(todayQuery.rows[0].sessions_today) || 0,
       unlocked_achievements: parseInt(achievementsQuery.rows[0].unlocked_count) || 0,
-      recent_sessions: recentSessionsQuery.rows
+      recent_sessions: recentSessionsQuery.rows,
+      subject_stats: subjectQuery.rows
     };
 
     res.json({
@@ -190,6 +300,46 @@ router.get('/stats', authenticateToken, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to retrieve statistics',
+      error: error.message
+    });
+  }
+});
+
+// ============================================
+// GET /api/student/achievements - Get student achievements
+// ============================================
+router.get('/achievements', authenticateToken, async (req, res) => {
+  try {
+    const studentId = req.student.id;
+
+    // Get all achievements with unlock status
+    const achievementsQuery = await query(
+      `SELECT 
+        a.id,
+        a.name,
+        a.description,
+        a.icon,
+        a.category,
+        a.points_reward,
+        a.xp_reward,
+        CASE WHEN sa.id IS NOT NULL THEN true ELSE false END as unlocked,
+        sa.unlocked_at
+       FROM achievements a
+       LEFT JOIN student_achievements sa ON a.id = sa.achievement_id AND sa.student_id = $1
+       ORDER BY sa.unlocked_at DESC NULLS LAST, a.id`,
+      [studentId]
+    );
+
+    res.json({
+      success: true,
+      achievements: achievementsQuery.rows
+    });
+
+  } catch (error) {
+    console.error('Get achievements error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve achievements',
       error: error.message
     });
   }
