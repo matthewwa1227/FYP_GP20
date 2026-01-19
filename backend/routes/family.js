@@ -1,99 +1,164 @@
 const express = require('express');
 const router = express.Router();
-const { pool } = require('../db/connection');
-const { authenticateToken } = require('../middleware/auth');
+const db = require('../db/connection'); // Assumes this exports a pg.Pool
 const crypto = require('crypto');
+const { authenticateToken } = require('../middleware/auth');
 
-// Helper: Generate 6-char random code
-const generateCode = () => {
-    return crypto.randomBytes(3).toString('hex').toUpperCase();
-};
+// Apply authentication middleware to all routes in this router
+router.use(authenticateToken);
 
-// ==========================================
-// STUDENT ROUTE: Generate Link Code
-// ==========================================
-router.post('/generate-code', authenticateToken, async (req, res) => {
-    // TODO: Ensure req.user is actually a student
-    const studentId = req.student.id; 
-    const client = await pool.connect();
+// ---------------------------------------------------------
+// 1. STUDENT: Generate a Connection Code
+// ---------------------------------------------------------
+router.post('/generate-code', async (req, res) => {
+    // req.user is now guaranteed by the middleware
+    const studentId = req.user.id; 
 
     try {
-        // 1. Clean up old codes for this student
-        await client.query('DELETE FROM connection_codes WHERE student_id = $1', [studentId]);
+        // Generate a random 6-character hex code
+        const code = crypto.randomBytes(3).toString('hex').toUpperCase();
+        
+        const expiresAt = new Date();
+        expiresAt.setHours(expiresAt.getHours() + 24);
 
-        // 2. Generate new code (valid for 15 mins)
-        const code = generateCode();
-        const expiresAt = new Date(Date.now() + 15 * 60000); // Now + 15 mins
+        const sql = `
+            INSERT INTO connection_codes (code, student_id, expires_at)
+            VALUES ($1, $2, $3)
+            RETURNING code, expires_at
+        `;
+        
+        const result = await db.query(sql, [code, studentId, expiresAt]);
+        res.json({ success: true, code: result.rows[0].code });
 
-        await client.query(
-            'INSERT INTO connection_codes (code, student_id, expires_at) VALUES ($1, $2, $3)',
-            [code, studentId, expiresAt]
+    } catch (err) {
+        console.error("Generate Code Error:", err);
+        res.status(500).json({ success: false, message: "Server error generating code" });
+    }
+});
+
+// ---------------------------------------------------------
+// 2. PARENT: Link a Child using the Code
+// ---------------------------------------------------------
+router.post('/link-child', async (req, res) => {
+    const parentId = req.user.id;
+    const { code } = req.body;
+
+    if (!code) {
+        return res.status(400).json({ success: false, message: "Code is required" });
+    }
+
+    // Get a client for transaction
+    const client = await db.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        // A. Find the code
+        const codeRes = await client.query(
+            `SELECT student_id, expires_at FROM connection_codes WHERE code = $1`, 
+            [code]
         );
 
-        res.json({
-            success: true,
-            code: code,
-            expiresIn: '15 minutes'
+        if (codeRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, message: "Invalid code" });
+        }
+
+        const { student_id, expires_at } = codeRes.rows[0];
+
+        // B. Check expiration
+        if (new Date() > new Date(expires_at)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, message: "Code expired" });
+        }
+
+        // C. Check if already linked
+        const existingLink = await client.query(
+            `SELECT id FROM parent_student_links WHERE parent_id = $1 AND student_id = $2`,
+            [parentId, student_id]
+        );
+
+        if (existingLink.rows.length > 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, message: "Student already linked" });
+        }
+
+        // D. Create the link
+        await client.query(
+            `INSERT INTO parent_student_links (parent_id, student_id) VALUES ($1, $2)`,
+            [parentId, student_id]
+        );
+
+        // E. Fetch student details (for UI confirmation)
+        const studentRes = await client.query(
+            `SELECT full_name, current_level FROM students WHERE id = $1`,
+            [student_id]
+        );
+
+        // F. Delete the used code (One-time use)
+        await client.query(`DELETE FROM connection_codes WHERE code = $1`, [code]);
+
+        await client.query('COMMIT');
+        
+        res.json({ 
+            success: true, 
+            student: studentRes.rows[0],
+            message: "Successfully linked!" 
         });
 
-    } catch (error) {
-        console.error('Error generating code:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error("Linking Error:", err);
+        res.status(500).json({ success: false, message: "Server error linking account" });
     } finally {
         client.release();
     }
 });
+// ---------------------------------------------------------
+// 3. PARENT: Get Dashboard Stats (DEBUG VERSION)
+// ---------------------------------------------------------
+router.get('/children-stats', async (req, res) => {
+    // 1. Debug: Check if we actually have the user ID from the token
+    if (!req.user || !req.user.id) {
+        console.error("❌ Auth Error: req.user is missing or has no ID", req.user);
+        return res.status(401).json({ success: false, message: "User not identified" });
+    }
 
-// ==========================================
-// PARENT ROUTE: Link Child
-// ==========================================
-router.post('/link-child', authenticateToken, async (req, res) => {
-    // TODO: Ensure req.user is a parent
-    const parentId = req.user.id; 
-    const { code } = req.body;
-
-    const client = await pool.connect();
+    const parentId = req.user.id;
+    console.log(`🔍 Fetching stats for Parent ID: ${parentId}`);
 
     try {
-        // 1. Find valid code
-        const codeResult = await client.query(
-            `SELECT student_id FROM connection_codes 
-             WHERE code = $1 AND expires_at > NOW()`,
-            [code.toUpperCase()]
-        );
+        // 2. Debug: Use a safer query first to test connection
+        // If this works, add back the other columns (avatar_url, etc) one by one.
+        const sql = `
+            SELECT 
+                s.id, 
+                s.full_name, 
+                s.current_level
+                -- s.avatar_url,         <-- Commented out for safety
+                -- s.total_points,       <-- Commented out for safety
+                -- s.streak_days,        <-- Commented out for safety
+                -- s.total_study_minutes <-- Commented out for safety
+            FROM parent_student_links psl
+            JOIN students s ON psl.student_id = s.id
+            WHERE psl.parent_id = $1
+        `;
+        
+        const result = await db.query(sql, [parentId]);
+        
+        console.log(`✅ Found ${result.rows.length} children`);
+        res.json({ success: true, children: result.rows });
 
-        if (codeResult.rows.length === 0) {
-            return res.status(400).json({ success: false, message: 'Invalid or expired code' });
-        }
-
-        const studentId = codeResult.rows[0].student_id;
-
-        // 2. Check if already linked
-        const existingLink = await client.query(
-            'SELECT * FROM parent_student_links WHERE parent_id = $1 AND student_id = $2',
-            [parentId, studentId]
-        );
-
-        if (existingLink.rows.length > 0) {
-            return res.status(400).json({ success: false, message: 'Already linked to this student' });
-        }
-
-        // 3. Create Link
-        await client.query(
-            'INSERT INTO parent_student_links (parent_id, student_id) VALUES ($1, $2)',
-            [parentId, studentId]
-        );
-
-        // 4. Delete the used code
-        await client.query('DELETE FROM connection_codes WHERE code = $1', [code]);
-
-        res.json({ success: true, message: 'Successfully linked to student!' });
-
-    } catch (error) {
-        console.error('Error linking child:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
-    } finally {
-        client.release();
+    } catch (err) {
+        // 3. Debug: Log the ACTUAL database error to your console
+        console.error("❌ DATABASE ERROR:", err.message); 
+        console.error("Full Error Object:", err);
+        
+        res.status(500).json({ 
+            success: false, 
+            message: "Error fetching stats",
+            debug_error: err.message // sending this to frontend temporarily helps debugging
+        });
     }
 });
 

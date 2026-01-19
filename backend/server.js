@@ -43,6 +43,9 @@ app.use('/api/leaderboard', require('./routes/leaderboard'));
 // Dashboard
 app.use('/api/dashboard', require('./routes/dashboard'));
 
+// Family Connections
+app.use('/api/family', require('./routes/family'));
+
 // ============================================
 // HEALTH & TEST ENDPOINTS
 // ============================================
