@@ -53,6 +53,8 @@ app.use('/api/dashboard', require('./routes/dashboard'));
 // Family Connections
 app.use('/api/family', require('./routes/family'));
 
+app.use('/api/ai',  require('./routes/ai'));
+
 // ============================================
 // HEALTH & TEST ENDPOINTS
 // ============================================
