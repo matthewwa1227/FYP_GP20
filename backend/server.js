@@ -1,6 +1,11 @@
+// Force Node to prefer IPv4 (helps when DNS returns IPv6 but IPv6 connectivity is flaky)
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
+
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -9,7 +14,7 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// Import database connection
+// Import database connection (after ipv4first + dotenv)
 const db = require('./db/connection');
 
 // Test database connection on startup
@@ -17,7 +22,9 @@ const db = require('./db/connection');
   console.log('🔍 Testing database connection...');
   const connected = await db.testConnection();
   if (!connected) {
-    console.error('⚠️  Server started but database connection failed. Check your DATABASE_URL in .env');
+    console.error(
+      '⚠️  Server started but database connection failed. Check your DATABASE_URL in .env'
+    );
   }
 })();
 
@@ -54,7 +61,7 @@ app.use('/api/family', require('./routes/family'));
 app.get('/api/health', async (req, res) => {
   let dbStatus = 'disconnected';
   let dbMessage = '';
-  
+
   try {
     const result = await db.query('SELECT NOW() as current_time, version() as version');
     dbStatus = 'connected';
@@ -63,15 +70,15 @@ app.get('/api/health', async (req, res) => {
     dbStatus = 'error';
     dbMessage = error.message;
   }
-  
-  res.json({ 
-    status: 'Server is running!', 
+
+  res.json({
+    status: 'Server is running!',
     timestamp: new Date(),
     environment: process.env.NODE_ENV || 'development',
     database: {
       status: dbStatus,
-      message: dbMessage
-    }
+      message: dbMessage,
+    },
   });
 });
 
@@ -81,7 +88,7 @@ app.get('/api/db/test', async (req, res) => {
     const result = await db.query('SELECT COUNT(*) as student_count FROM students');
     const achievements = await db.query('SELECT COUNT(*) as achievement_count FROM achievements');
     const sessions = await db.query('SELECT COUNT(*) as session_count FROM study_sessions');
-    
+
     res.json({
       success: true,
       message: 'Database connection successful!',
@@ -89,14 +96,14 @@ app.get('/api/db/test', async (req, res) => {
         students: result.rows[0].student_count,
         achievements: achievements.rows[0].achievement_count,
         sessions: sessions.rows[0].session_count,
-        tables: ['students', 'study_sessions', 'achievements', 'student_achievements', 'daily_goals']
-      }
+        tables: ['students', 'study_sessions', 'achievements', 'student_achievements', 'daily_goals'],
+      },
     });
   } catch (error) {
     res.status(500).json({
       success: false,
       message: 'Database connection failed',
-      error: error.message
+      error: error.message,
     });
   }
 });
@@ -110,7 +117,7 @@ app.use((req, res) => {
   res.status(404).json({
     success: false,
     message: 'Route not found',
-    path: req.path
+    path: req.path,
   });
 });
 
@@ -120,7 +127,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({
     success: false,
     message: 'Something went wrong!',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    error: process.env.NODE_ENV === 'development' ? err.message : undefined,
   });
 });
 

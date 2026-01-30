@@ -1,14 +1,10 @@
 const jwt = require('jsonwebtoken');
 
-// Middleware to verify JWT token and protect routes
 const authenticateToken = (req, res, next) => {
   try {
-    // Get token from header
-    // Expected format: "Authorization: Bearer <token>"
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Extract token after "Bearer "
+    const token = authHeader && authHeader.split(' ')[1];
 
-    // If no token provided
     if (!token) {
       return res.status(401).json({
         success: false,
@@ -16,24 +12,25 @@ const authenticateToken = (req, res, next) => {
       });
     }
 
-    // Verify token
     jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
       if (err) {
-        // Token is invalid or expired
         return res.status(403).json({
           success: false,
           message: 'Invalid or expired token.'
         });
       }
 
-      // Token is valid - attach user info to request
-      req.student = {
-        id: decoded.studentId,
+      // Set BOTH req.user and req.student for compatibility
+      req.user = {
+        id: decoded.studentId || decoded.id,
         email: decoded.email,
-        username: decoded.username
+        username: decoded.username,
+        role: decoded.role || 'student'
       };
+      
+      // Backwards compatibility
+      req.student = req.user;
 
-      // Continue to next middleware/route handler
       next();
     });
 
@@ -46,34 +43,35 @@ const authenticateToken = (req, res, next) => {
   }
 };
 
-// Optional middleware - doesn't fail if no token
 const optionalAuth = (req, res, next) => {
   try {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
     if (!token) {
-      // No token, but that's okay - continue without user info
+      req.user = null;
       req.student = null;
       return next();
     }
 
     jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
       if (err) {
-        // Invalid token, but that's okay - continue without user info
+        req.user = null;
         req.student = null;
       } else {
-        // Valid token - attach user info
-        req.student = {
-          id: decoded.studentId,
+        req.user = {
+          id: decoded.studentId || decoded.id,
           email: decoded.email,
-          username: decoded.username
+          username: decoded.username,
+          role: decoded.role || 'student'
         };
+        req.student = req.user;
       }
       next();
     });
 
   } catch (error) {
+    req.user = null;
     req.student = null;
     next();
   }
