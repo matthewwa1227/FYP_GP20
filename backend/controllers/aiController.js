@@ -79,15 +79,39 @@ const chatWithBuddy = async (req, res) => {
 const generateSchedule = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { preferences = {}, dateRange = 7 } = req.body;
+    const { preferences = {}, dateRange = 7, tasks: frontendTasks } = req.body;
 
-    // Get pending tasks
-    const tasksResult = await query(`
-      SELECT id, title, description, priority, estimated_duration, due_date, subject
-      FROM tasks 
-      WHERE user_id = $1 AND status = 'pending'
-      ORDER BY due_date ASC NULLS LAST, priority DESC
-    `, [userId]);
+    let tasks = [];
+
+    // Use tasks from frontend if provided, otherwise fetch from database
+    if (frontendTasks && frontendTasks.length > 0) {
+      tasks = frontendTasks.map(t => ({
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        priority: t.priority || 'medium',
+        estimated_duration: t.estimatedMinutes || t.estimated_duration || 30,
+        due_date: t.dueDate || t.due_date,
+        subject: t.subject || 'General'
+      }));
+    } else {
+      // Get pending tasks from database
+      const tasksResult = await query(`
+        SELECT id, title, description, priority, estimated_duration, due_date, subject
+        FROM tasks 
+        WHERE user_id = $1 AND status != 'completed'
+        ORDER BY 
+          CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
+          due_date ASC,
+          CASE priority 
+            WHEN 'high' THEN 1 
+            WHEN 'medium' THEN 2 
+            WHEN 'low' THEN 3 
+            ELSE 2 
+          END
+      `, [userId]);
+      tasks = tasksResult.rows;
+    }
 
     // Get study patterns from study_sessions
     const studyPatternsResult = await query(`
@@ -112,16 +136,25 @@ const generateSchedule = async (req, res) => {
 
     // Generate schedule
     const schedule = await kimiService.generateStudySchedule({
-      tasks: tasksResult.rows,
+      tasks,
       studyPatterns: studyPatternsResult.rows,
       existingEvents: existingEventsResult.rows,
       preferences,
       dateRange
     });
 
-    // Save generated sessions
+    // Clear old scheduled sessions and save new ones
     if (schedule.sessions && schedule.sessions.length > 0) {
+      // Delete previous generated sessions (optional - keeps schedule fresh)
+      await query(`
+        DELETE FROM scheduled_sessions 
+        WHERE user_id = $1 AND status = 'scheduled' AND start_time > NOW()
+      `, [userId]);
+
+      // Save generated sessions
       for (const session of schedule.sessions) {
+        if (session.type === 'break') continue; // Don't save breaks to database
+        
         await query(`
           INSERT INTO scheduled_sessions (user_id, task_id, title, start_time, end_time, description, status)
           VALUES ($1, $2, $3, $4, $5, $6, 'scheduled')
@@ -136,10 +169,12 @@ const generateSchedule = async (req, res) => {
       }
     }
 
+    const studySessions = schedule.sessions?.filter(s => s.type !== 'break') || [];
+    
     res.json({
       success: true,
       schedule,
-      message: `Generated ${schedule.sessions?.length || 0} study sessions`
+      message: `Generated ${studySessions.length} study sessions for ${dateRange} days`
     });
 
   } catch (error) {
