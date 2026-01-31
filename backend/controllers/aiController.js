@@ -43,18 +43,53 @@ const chatWithBuddy = async (req, res) => {
       today_study_minutes: userContext.today_study_minutes || 0
     };
 
+    // Get conversation history from database (filter out empty responses!)
+    const dbHistoryResult = await query(`
+      SELECT user_message, ai_response, created_at
+      FROM ai_conversations
+      WHERE user_id = $1 
+        AND conversation_type = 'chat'
+        AND user_message IS NOT NULL 
+        AND user_message != ''
+        AND ai_response IS NOT NULL 
+        AND ai_response != ''
+      ORDER BY created_at DESC
+      LIMIT 10
+    `, [userId]);
+
+    // Format history for AI (reverse to chronological order)
+    const formattedHistory = [];
+    dbHistoryResult.rows.reverse().forEach(row => {
+      formattedHistory.push({ role: 'user', content: row.user_message });
+      formattedHistory.push({ role: 'assistant', content: row.ai_response });
+    });
+
+    console.log(`📜 Loaded ${dbHistoryResult.rows.length} valid conversation pairs from database`);
+
     // Get AI response
     const aiResponse = await kimiService.chatWithStudyBuddy(
       message,
-      conversationHistory,
+      formattedHistory,  // Use database history instead of frontend history
       contextForAI
     );
 
-    // Save conversation
-    await query(`
-      INSERT INTO ai_conversations (user_id, user_message, ai_response, conversation_type)
-      VALUES ($1, $2, $3, 'chat')
-    `, [userId, message, aiResponse]);
+    // Only save if we got a valid response (not a fallback error message)
+    const isValidResponse = aiResponse && 
+                           aiResponse.trim() !== '' &&
+                           !aiResponse.includes('connection issue') && 
+                           !aiResponse.includes('連接不上') &&
+                           !aiResponse.includes('Try again');
+
+    if (isValidResponse) {
+      // Save conversation to database
+      await query(`
+        INSERT INTO ai_conversations (user_id, user_message, ai_response, conversation_type)
+        VALUES ($1, $2, $3, 'chat')
+      `, [userId, message.trim(), aiResponse.trim()]);
+      console.log('✅ Conversation saved to database');
+    } else {
+      console.log('⚠️ Not saving conversation - API returned fallback/error response');
+    }
 
     res.json({
       success: true,
@@ -229,10 +264,16 @@ const getConversationHistory = async (req, res) => {
     const userId = req.user.id;
     const { limit = 20 } = req.query;
 
+    // Only fetch conversations with valid responses
     const conversationsResult = await query(`
       SELECT user_message, ai_response, created_at
       FROM ai_conversations
-      WHERE user_id = $1 AND conversation_type = 'chat'
+      WHERE user_id = $1 
+        AND conversation_type = 'chat'
+        AND user_message IS NOT NULL 
+        AND user_message != ''
+        AND ai_response IS NOT NULL 
+        AND ai_response != ''
       ORDER BY created_at DESC
       LIMIT $2
     `, [userId, parseInt(limit)]);
@@ -295,10 +336,35 @@ const getScheduledSessions = async (req, res) => {
   }
 };
 
+// Clear conversation history (optional - useful utility)
+const clearConversationHistory = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    await query(`
+      DELETE FROM ai_conversations
+      WHERE user_id = $1 AND conversation_type = 'chat'
+    `, [userId]);
+
+    res.json({
+      success: true,
+      message: 'Conversation history cleared'
+    });
+
+  } catch (error) {
+    console.error('Clear history error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to clear history'
+    });
+  }
+};
+
 module.exports = {
   chatWithBuddy,
   generateSchedule,
   getStudyTips,
   getConversationHistory,
-  getScheduledSessions
+  getScheduledSessions,
+  clearConversationHistory
 };

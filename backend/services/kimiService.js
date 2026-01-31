@@ -35,12 +35,28 @@ Rules:
 6. When answering academic questions, explain clearly with examples
 7. Respond in the same language the user uses (Chinese or English)`;
 
+  // Filter and validate conversation history - THIS IS THE FIX
+  const validHistory = conversationHistory
+    .slice(-10)
+    .filter(msg => {
+      // Must have role and non-empty content
+      if (!msg || !msg.role || !msg.content) return false;
+      // Content must be a non-empty string
+      if (typeof msg.content !== 'string' || msg.content.trim() === '') return false;
+      // Role must be valid
+      if (!['user', 'assistant'].includes(msg.role)) return false;
+      return true;
+    })
+    .map(msg => ({
+      role: msg.role,
+      content: msg.content.trim()
+    }));
+
+  console.log(`📜 Conversation history: ${conversationHistory.length} total, ${validHistory.length} valid messages`);
+
   const messages = [
     { role: 'system', content: systemPrompt },
-    ...conversationHistory.slice(-10).map(msg => ({
-      role: msg.role,
-      content: msg.content
-    })),
+    ...validHistory,
     { role: 'user', content: message }
   ];
 
@@ -58,6 +74,11 @@ Rules:
     return completion.choices[0].message.content;
   } catch (error) {
     console.error('❌ Kimi API error:', error.message);
+    
+    // More specific error handling
+    if (error.message.includes('empty')) {
+      console.error('❌ Empty message in conversation - check database for invalid entries');
+    }
     
     const fallbacks = [
       "I'm having a brief connection issue. Try again in a moment! 🔄",
