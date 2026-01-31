@@ -1,4 +1,3 @@
-// Force Node to prefer IPv4 (helps when DNS returns IPv6 but IPv6 connectivity is flaky)
 const dns = require('dns');
 dns.setDefaultResultOrder('ipv4first');
 
@@ -23,7 +22,7 @@ const db = require('./db/connection');
   const connected = await db.testConnection();
   if (!connected) {
     console.error(
-      '⚠️  Server started but database connection failed. Check your DATABASE_URL in .env'
+      '⚠️ Server started but database connection failed. Check your DATABASE_URL in .env'
     );
   }
 })();
@@ -53,7 +52,11 @@ app.use('/api/dashboard', require('./routes/dashboard'));
 // Family Connections
 app.use('/api/family', require('./routes/family'));
 
-app.use('/api/ai',  require('./routes/ai'));
+// AI Features
+app.use('/api/ai', require('./routes/ai'));
+
+// Tasks System
+app.use('/api/tasks', require('./routes/tasks'));
 
 // ============================================
 // HEALTH & TEST ENDPOINTS
@@ -90,6 +93,7 @@ app.get('/api/db/test', async (req, res) => {
     const result = await db.query('SELECT COUNT(*) as student_count FROM students');
     const achievements = await db.query('SELECT COUNT(*) as achievement_count FROM achievements');
     const sessions = await db.query('SELECT COUNT(*) as session_count FROM study_sessions');
+    const tasks = await db.query('SELECT COUNT(*) as task_count FROM tasks');
 
     res.json({
       success: true,
@@ -98,7 +102,8 @@ app.get('/api/db/test', async (req, res) => {
         students: result.rows[0].student_count,
         achievements: achievements.rows[0].achievement_count,
         sessions: sessions.rows[0].session_count,
-        tables: ['students', 'study_sessions', 'achievements', 'student_achievements', 'daily_goals'],
+        tasks: tasks.rows[0].task_count,
+        tables: ['students', 'study_sessions', 'achievements', 'student_achievements', 'daily_goals', 'tasks'],
       },
     });
   } catch (error) {
@@ -156,6 +161,12 @@ app.listen(PORT, () => {
   console.log(`   - POST /api/sessions/:id/end`);
   console.log(`   - GET  /api/sessions/active`);
   console.log(`   - GET  /api/sessions/history`);
+  console.log(`\n   Tasks:`);
+  console.log(`   - GET  /api/tasks`);
+  console.log(`   - POST /api/tasks`);
+  console.log(`   - PUT  /api/tasks/:id`);
+  console.log(`   - DELETE /api/tasks/:id`);
+  console.log(`   - PATCH /api/tasks/:id/toggle`);
   console.log(`\n   Achievements:`);
   console.log(`   - GET  /api/achievements`);
   console.log(`   - GET  /api/achievements/student`);
