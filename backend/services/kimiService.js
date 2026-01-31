@@ -6,10 +6,12 @@ console.log('🔑 Kimi API Key loaded:', process.env.KIMI_API_KEY ? 'Yes (length
 const kimi = new OpenAI({
   apiKey: process.env.KIMI_API_KEY,
   baseURL: 'https://api.moonshot.cn/v1',
-  timeout: 60000 // Increased to 60 seconds
+  timeout: 60000
 });
 
-// Study Buddy Chat
+// ============================================
+// STUDY BUDDY CHAT (Your existing code)
+// ============================================
 const chatWithStudyBuddy = async (message, conversationHistory, userContext) => {
   const systemPrompt = `You are "Study Buddy", a friendly and encouraging AI learning companion. Your characteristics:
 - Encouraging and positive, but not overly enthusiastic
@@ -35,15 +37,11 @@ Rules:
 6. When answering academic questions, explain clearly with examples
 7. Respond in the same language the user uses (Chinese or English)`;
 
-  // Filter and validate conversation history - THIS IS THE FIX
   const validHistory = conversationHistory
     .slice(-10)
     .filter(msg => {
-      // Must have role and non-empty content
       if (!msg || !msg.role || !msg.content) return false;
-      // Content must be a non-empty string
       if (typeof msg.content !== 'string' || msg.content.trim() === '') return false;
-      // Role must be valid
       if (!['user', 'assistant'].includes(msg.role)) return false;
       return true;
     })
@@ -75,7 +73,6 @@ Rules:
   } catch (error) {
     console.error('❌ Kimi API error:', error.message);
     
-    // More specific error handling
     if (error.message.includes('empty')) {
       console.error('❌ Empty message in conversation - check database for invalid entries');
     }
@@ -88,9 +85,122 @@ Rules:
   }
 };
 
-// Generate Study Schedule - Uses smart fallback primarily for reliability
+// ============================================
+// AI TUTOR - NEW FUNCTIONALITY
+// ============================================
+
+/**
+ * Send messages to Kimi for the AI Tutor
+ * @param {Array} messages - Array of message objects with role and content
+ * @param {Object} options - Optional configuration
+ * @returns {Promise<string>} - The AI response text
+ */
+const sendMessageToKimi = async (messages, options = {}) => {
+  try {
+    const {
+      model = 'moonshot-v1-8k',
+      temperature = 0.7,
+      maxTokens = 800
+    } = options;
+
+    // Filter and validate messages
+    const validMessages = messages.filter(msg => {
+      if (!msg || !msg.role || !msg.content) return false;
+      if (typeof msg.content !== 'string' || msg.content.trim() === '') return false;
+      return true;
+    }).map(msg => ({
+      role: msg.role,
+      content: msg.content.trim()
+    }));
+
+    if (validMessages.length === 0) {
+      throw new Error('No valid messages to send');
+    }
+
+    console.log('🎓 Calling Kimi API for tutor...');
+    console.log(`   Messages: ${validMessages.length}, Max tokens: ${maxTokens}`);
+
+    const completion = await kimi.chat.completions.create({
+      model,
+      messages: validMessages,
+      max_tokens: maxTokens,
+      temperature
+    });
+
+    if (completion?.choices?.[0]?.message?.content) {
+      console.log('✅ Tutor response received');
+      return completion.choices[0].message.content;
+    }
+
+    throw new Error('Invalid response from Kimi API');
+
+  } catch (error) {
+    console.error('❌ Kimi Tutor API error:', error.message);
+    
+    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+      throw new Error('AI tutor timed out. Please try again.');
+    }
+    
+    if (error.response?.status === 401) {
+      throw new Error('AI service authentication failed.');
+    }
+    
+    if (error.response?.status === 429) {
+      throw new Error('AI service is busy. Please wait a moment and try again.');
+    }
+    
+    throw new Error('Failed to get tutor response. Please try again.');
+  }
+};
+
+/**
+ * Generate a study hint for a topic
+ */
+const generateStudyHint = async (topic, subject) => {
+  const messages = [
+    {
+      role: 'system',
+      content: 'You are a helpful study assistant. Provide brief, encouraging study hints. Respond in the same language the user uses.'
+    },
+    {
+      role: 'user',
+      content: `Give me a quick study tip for learning about "${topic}" in ${subject}. Keep it to 1-2 sentences.`
+    }
+  ];
+
+  return sendMessageToKimi(messages, { maxTokens: 150 });
+};
+
+/**
+ * Generate a quiz question
+ */
+const generateQuizQuestion = async (topic, subject, difficulty = 'medium') => {
+  const messages = [
+    {
+      role: 'system',
+      content: 'You are a quiz generator. Create educational multiple choice questions. Respond in the same language as the topic.'
+    },
+    {
+      role: 'user',
+      content: `Create a ${difficulty} difficulty multiple choice question about "${topic}" in ${subject}. 
+      Format: 
+      Question: [question]
+      A) [option]
+      B) [option]
+      C) [option]
+      D) [option]
+      Correct: [letter]
+      Explanation: [brief explanation]`
+    }
+  ];
+
+  return sendMessageToKimi(messages, { maxTokens: 400 });
+};
+
+// ============================================
+// STUDY SCHEDULE (Your existing code)
+// ============================================
 const generateStudySchedule = async ({ tasks, studyPatterns, existingEvents, preferences, dateRange }) => {
-  // If no tasks, return empty schedule immediately
   if (!tasks || tasks.length === 0) {
     return {
       sessions: [],
@@ -103,7 +213,6 @@ const generateStudySchedule = async ({ tasks, studyPatterns, existingEvents, pre
     };
   }
 
-  // Try AI first, but with a shorter timeout and simpler prompt
   try {
     console.log('🚀 Calling Kimi API for schedule generation...');
     console.log('📝 Tasks count:', tasks.length);
@@ -113,7 +222,6 @@ const generateStudySchedule = async ({ tasks, studyPatterns, existingEvents, pre
     const sessionLength = preferences.sessionLength || 45;
     const breakLength = preferences.breakLength || 10;
 
-    // Simplified prompt for faster response
     const systemPrompt = `You are a study schedule optimizer. Return ONLY valid JSON, no explanations.`;
 
     const userPrompt = `Create study schedule. Current time: ${now.toISOString()}
@@ -126,7 +234,6 @@ Settings: ${sessionLength}min sessions, ${breakLength}min breaks, ${preferences.
 Return JSON:
 {"sessions":[{"taskId":number,"title":"string","startTime":"ISO","endTime":"ISO","type":"study","priority":"high/medium/low"}],"summary":"string","tips":["tip1","tip2"]}`;
 
-    // Use Promise.race for custom timeout
     const timeoutPromise = new Promise((_, reject) => 
       setTimeout(() => reject(new Error('Custom timeout')), 15000)
     );
@@ -146,7 +253,6 @@ Return JSON:
     
     console.log('✅ Kimi API response received');
 
-    // Extract JSON
     let jsonStr = responseText;
     const codeBlockMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (codeBlockMatch) {
@@ -158,7 +264,6 @@ Return JSON:
       const parsed = JSON.parse(jsonMatch[0]);
       
       if (parsed.sessions && Array.isArray(parsed.sessions) && parsed.sessions.length > 0) {
-        // Validate sessions
         parsed.sessions = parsed.sessions.filter(session => {
           try {
             const start = new Date(session.startTime);
@@ -186,7 +291,7 @@ Return JSON:
   }
 };
 
-// Smart fallback schedule generator (no AI needed) - This is actually quite good!
+// Smart fallback schedule generator
 const generateSmartFallbackSchedule = (tasks, dateRange, preferences = {}) => {
   const sessions = [];
   const now = new Date();
@@ -200,7 +305,6 @@ const generateSmartFallbackSchedule = (tasks, dateRange, preferences = {}) => {
   console.log(`   Sessions: ${sessionLength}min, Breaks: ${breakLength}min`);
   console.log(`   Hours: ${startHour}:00 - ${endHour}:00`);
 
-  // Sort tasks by priority and due date
   const sortedTasks = [...tasks].sort((a, b) => {
     const priorityWeight = { high: 3, medium: 2, low: 1 };
     const aPriority = priorityWeight[a.priority] || 2;
@@ -209,21 +313,17 @@ const generateSmartFallbackSchedule = (tasks, dateRange, preferences = {}) => {
     const aDate = a.due_date ? new Date(a.due_date) : new Date('2099-12-31');
     const bDate = b.due_date ? new Date(b.due_date) : new Date('2099-12-31');
     
-    // Sort by priority first, then due date
     if (bPriority !== aPriority) return bPriority - aPriority;
     return aDate - bDate;
   });
 
-  // Calculate sessions per day
   const availableHours = endHour - startHour;
   const sessionWithBreak = sessionLength + breakLength;
   const maxSessionsPerDay = Math.floor((availableHours * 60) / sessionWithBreak);
   const sessionsPerDay = Math.min(maxSessionsPerDay, 4);
   
-  // Start from tomorrow at preferred start time (or today if early enough)
   let currentDate = new Date(now);
   if (currentDate.getHours() >= startHour + 2) {
-    // If it's past start time + 2 hours, start tomorrow
     currentDate.setDate(currentDate.getDate() + 1);
   }
   currentDate.setHours(startHour, 0, 0, 0);
@@ -234,12 +334,9 @@ const generateSmartFallbackSchedule = (tasks, dateRange, preferences = {}) => {
   for (let i = 0; i < sortedTasks.length && dayCount < dateRange; i++) {
     const task = sortedTasks[i];
     const taskDuration = task.estimated_duration || task.estimatedMinutes || sessionLength;
-    
-    // Calculate how many sessions needed for this task
     const sessionsNeeded = Math.ceil(taskDuration / sessionLength);
     
     for (let s = 0; s < sessionsNeeded && dayCount < dateRange; s++) {
-      // Check if we need to move to next day
       if (sessionInDay >= sessionsPerDay) {
         currentDate.setDate(currentDate.getDate() + 1);
         currentDate.setHours(startHour, 0, 0, 0);
@@ -248,7 +345,6 @@ const generateSmartFallbackSchedule = (tasks, dateRange, preferences = {}) => {
         if (dayCount >= dateRange) break;
       }
       
-      // Create study session
       const startTime = new Date(currentDate);
       const endTime = new Date(startTime);
       endTime.setMinutes(endTime.getMinutes() + sessionLength);
@@ -264,7 +360,6 @@ const generateSmartFallbackSchedule = (tasks, dateRange, preferences = {}) => {
         type: 'study'
       });
       
-      // Add break after study session (except for last session of day)
       if (sessionInDay < sessionsPerDay - 1) {
         const breakStart = new Date(endTime);
         const breakEnd = new Date(breakStart);
@@ -279,7 +374,6 @@ const generateSmartFallbackSchedule = (tasks, dateRange, preferences = {}) => {
           type: 'break'
         });
         
-        // Move current time forward
         currentDate = new Date(breakEnd);
       } else {
         currentDate = new Date(endTime);
@@ -287,7 +381,6 @@ const generateSmartFallbackSchedule = (tasks, dateRange, preferences = {}) => {
       
       sessionInDay++;
       
-      // Check if we've exceeded daily end time
       if (currentDate.getHours() >= endHour - 1) {
         currentDate.setDate(currentDate.getDate() + 1);
         currentDate.setHours(startHour, 0, 0, 0);
@@ -297,7 +390,6 @@ const generateSmartFallbackSchedule = (tasks, dateRange, preferences = {}) => {
     }
   }
   
-  // Remove trailing break if exists
   if (sessions.length > 0 && sessions[sessions.length - 1].type === 'break') {
     sessions.pop();
   }
@@ -310,7 +402,6 @@ const generateSmartFallbackSchedule = (tasks, dateRange, preferences = {}) => {
   
   console.log(`✅ Generated ${studySessions.length} study sessions across ${daysUsed} days`);
   
-  // Generate contextual tips based on tasks
   const tips = generateContextualTips(sortedTasks, preferences);
   
   return {
@@ -324,7 +415,7 @@ const generateSmartFallbackSchedule = (tasks, dateRange, preferences = {}) => {
   };
 };
 
-// Generate contextual tips based on user's tasks
+// Generate contextual tips
 const generateContextualTips = (tasks, preferences) => {
   const tips = [];
   
@@ -354,7 +445,9 @@ const generateContextualTips = (tasks, preferences) => {
   return tips.slice(0, 5);
 };
 
-// Generate Study Tips
+// ============================================
+// STUDY TIPS (Your existing code)
+// ============================================
 const generateStudyTips = async ({ subject, difficulty, performance }) => {
   try {
     console.log('🚀 Calling Kimi API for study tips...');
@@ -405,8 +498,17 @@ const getDefaultTips = (subject, difficulty) => {
   return tips.slice(0, 5);
 };
 
+// ============================================
+// EXPORTS
+// ============================================
 module.exports = {
+  // Existing exports
   chatWithStudyBuddy,
   generateStudySchedule,
-  generateStudyTips
+  generateStudyTips,
+  
+  // New tutor exports
+  sendMessageToKimi,
+  generateStudyHint,
+  generateQuizQuestion
 };

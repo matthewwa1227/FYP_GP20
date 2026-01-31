@@ -58,6 +58,8 @@ app.use('/api/ai', require('./routes/ai'));
 // Tasks System
 app.use('/api/tasks', require('./routes/tasks'));
 
+app.use('/api/tutor', require('./routes/tutor'));
+
 // ============================================
 // HEALTH & TEST ENDPOINTS
 // ============================================
