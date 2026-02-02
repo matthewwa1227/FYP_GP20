@@ -61,6 +61,27 @@ app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/tutor', require('./routes/tutor'));
 
 // ============================================
+// NEW: ROOT API ENDPOINT (FIXES YOUR /api ISSUE)
+// ============================================
+app.get('/api', (req, res) => {
+  res.json({
+    success: true,
+    message: 'StudyQuest API v1.0.0 is running!',
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      health: '/api/health',
+      auth: '/api/auth/register, /api/auth/login',
+      sessions: '/api/sessions/active, /api/sessions/history',
+      tasks: '/api/tasks',
+      student: '/api/student/profile',
+      achievements: '/api/achievements',
+      leaderboard: '/api/leaderboard/global'
+    },
+    docs: 'Check console logs for full endpoint list'
+  });
+});
+
+// ============================================
 // HEALTH & TEST ENDPOINTS
 // ============================================
 
@@ -121,12 +142,18 @@ app.get('/api/db/test', async (req, res) => {
 // ERROR HANDLERS
 // ============================================
 
-// 404 handler
+// 404 handler - AFTER all your routes
 app.use((req, res) => {
   res.status(404).json({
     success: false,
     message: 'Route not found',
     path: req.path,
+    available: [
+      '/api/health',
+      '/api/db/test',
+      '/api/auth/register',
+      '/api/auth/login'
+    ]
   });
 });
 
@@ -150,34 +177,52 @@ app.listen(PORT, () => {
   console.log(`${'='.repeat(50)}`);
   console.log(`📍 Port: ${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`✅ http://localhost:${PORT}/api`);  // ← NOW THIS WORKS!
   console.log(`\n📚 Available Endpoints:`);
-  console.log(`\n   Health & Database:`);
-  console.log(`   - GET  /api/health`);
-  console.log(`   - GET  /api/db/test`);
-  console.log(`\n   Authentication:`);
-  console.log(`   - POST /api/auth/register`);
-  console.log(`   - POST /api/auth/login`);
-  console.log(`   - GET  /api/auth/health`);
-  console.log(`\n   Study Sessions:`);
-  console.log(`   - POST /api/sessions/start`);
-  console.log(`   - POST /api/sessions/:id/end`);
-  console.log(`   - GET  /api/sessions/active`);
-  console.log(`   - GET  /api/sessions/history`);
-  console.log(`\n   Tasks:`);
-  console.log(`   - GET  /api/tasks`);
-  console.log(`   - POST /api/tasks`);
-  console.log(`   - PUT  /api/tasks/:id`);
-  console.log(`   - DELETE /api/tasks/:id`);
-  console.log(`   - PATCH /api/tasks/:id/toggle`);
-  console.log(`\n   Achievements:`);
-  console.log(`   - GET  /api/achievements`);
-  console.log(`   - GET  /api/achievements/student`);
-  console.log(`   - POST /api/achievements/check`);
-  console.log(`\n   Leaderboard:`);
-  console.log(`   - GET  /api/leaderboard/global`);
-  console.log(`   - GET  /api/leaderboard/my-rank`);
-  console.log(`\n   Dashboard:`);
-  console.log(`   - GET  /api/dashboard`);
-  console.log(`   - GET  /api/dashboard/stats/weekly`);
+  console.log(`\n  Health & Database:`);
+  console.log(`  - GET  /api/health`);
+  console.log(`  - GET  /api/db/test`);
+  console.log(`\n  Authentication:`);
+  console.log(`  - POST /api/auth/register`);
+  console.log(`  - POST /api/auth/login`);
+  console.log(`  - GET  /api/auth/health`);
+  console.log(`\n  Study Sessions:`);
+  console.log(`  - POST /api/sessions/start`);
+  console.log(`  - POST /api/sessions/:id/end`);
+  console.log(`  - GET  /api/sessions/active`);
+  console.log(`  - GET  /api/sessions/history`);
+  console.log(`\n  Student:`);
+  console.log(`  - GET  /api/student/profile`);
+  console.log(`  - PUT  /api/student/profile`);
+  console.log(`  - GET  /api/student/stats`);
+  console.log(`\n  Tasks:`);
+  console.log(`  - GET  /api/tasks`);
+  console.log(`  - POST /api/tasks`);
+  console.log(`  - PUT  /api/tasks/:id`);
+  console.log(`  - DELETE /api/tasks/:id`);
+  console.log(`  - PATCH /api/tasks/:id/toggle`);
+  console.log(`\n  Achievements:`);
+  console.log(`  - GET  /api/achievements`);
+  console.log(`  - GET  /api/achievements/student`);
+  console.log(`  - POST /api/achievements/check`);
+  console.log(`\n  Leaderboard:`);
+  console.log(`  - GET  /api/leaderboard/global`);
+  console.log(`  - GET  /api/leaderboard/my-rank`);
+  console.log(`\n  Dashboard:`);
+  console.log(`  - GET  /api/dashboard`);
+  console.log(`  - GET  /api/dashboard/stats/weekly`);
+  console.log(`\n  Family:`);
+  console.log(`  - GET  /api/family/connections`);
+  console.log(`  - POST /api/family/invite`);
+  console.log(`  - POST /api/family/accept`);
+  console.log(`  - GET  /api/family/child-progress`);
+  console.log(`\n  AI Features:`);
+  console.log(`  - POST /api/ai/study-tips`);
+  console.log(`  - POST /api/ai/summarize`);
+  console.log(`  - POST /api/ai/quiz-generate`);
+  console.log(`\n  Tutor:`);
+  console.log(`  - POST /api/tutor/ask`);
+  console.log(`  - GET  /api/tutor/history`);
+  console.log(`  - POST /api/tutor/explain`);
   console.log(`${'='.repeat(50)}\n`);
 });
