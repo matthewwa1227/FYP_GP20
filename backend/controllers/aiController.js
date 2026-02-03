@@ -1,6 +1,10 @@
 const { query } = require('../db/connection');
 const kimiService = require('../services/kimiService');
 
+// ============================================
+// STUDY BUDDY CONTROLLERS
+// ============================================
+
 // Chat with Study Buddy
 const chatWithBuddy = async (req, res) => {
   try {
@@ -32,7 +36,6 @@ const chatWithBuddy = async (req, res) => {
 
     const userContext = userStatsResult.rows[0] || {};
 
-    // Map to expected format
     const contextForAI = {
       full_name: userContext.full_name,
       level: userContext.current_level,
@@ -43,7 +46,7 @@ const chatWithBuddy = async (req, res) => {
       today_study_minutes: userContext.today_study_minutes || 0
     };
 
-    // Get conversation history from database (filter out empty responses!)
+    // Get conversation history from database
     const dbHistoryResult = await query(`
       SELECT user_message, ai_response, created_at
       FROM ai_conversations
@@ -57,38 +60,30 @@ const chatWithBuddy = async (req, res) => {
       LIMIT 10
     `, [userId]);
 
-    // Format history for AI (reverse to chronological order)
     const formattedHistory = [];
     dbHistoryResult.rows.reverse().forEach(row => {
       formattedHistory.push({ role: 'user', content: row.user_message });
       formattedHistory.push({ role: 'assistant', content: row.ai_response });
     });
 
-    console.log(`📜 Loaded ${dbHistoryResult.rows.length} valid conversation pairs from database`);
-
     // Get AI response
     const aiResponse = await kimiService.chatWithStudyBuddy(
       message,
-      formattedHistory,  // Use database history instead of frontend history
+      formattedHistory,
       contextForAI
     );
 
-    // Only save if we got a valid response (not a fallback error message)
+    // Save valid conversations
     const isValidResponse = aiResponse && 
-                           aiResponse.trim() !== '' &&
-                           !aiResponse.includes('connection issue') && 
-                           !aiResponse.includes('連接不上') &&
-                           !aiResponse.includes('Try again');
+      aiResponse.trim() !== '' &&
+      !aiResponse.includes('connection issue') &&
+      !aiResponse.includes('Try again');
 
     if (isValidResponse) {
-      // Save conversation to database
       await query(`
         INSERT INTO ai_conversations (user_id, user_message, ai_response, conversation_type)
         VALUES ($1, $2, $3, 'chat')
       `, [userId, message.trim(), aiResponse.trim()]);
-      console.log('✅ Conversation saved to database');
-    } else {
-      console.log('⚠️ Not saving conversation - API returned fallback/error response');
     }
 
     res.json({
@@ -118,7 +113,6 @@ const generateSchedule = async (req, res) => {
 
     let tasks = [];
 
-    // Use tasks from frontend if provided, otherwise fetch from database
     if (frontendTasks && frontendTasks.length > 0) {
       tasks = frontendTasks.map(t => ({
         id: t.id,
@@ -130,7 +124,6 @@ const generateSchedule = async (req, res) => {
         subject: t.subject || 'General'
       }));
     } else {
-      // Get pending tasks from database
       const tasksResult = await query(`
         SELECT id, title, description, priority, estimated_duration, due_date, subject
         FROM tasks 
@@ -148,7 +141,6 @@ const generateSchedule = async (req, res) => {
       tasks = tasksResult.rows;
     }
 
-    // Get study patterns from study_sessions
     const studyPatternsResult = await query(`
       SELECT 
         EXTRACT(DOW FROM created_at) as day_of_week,
@@ -161,7 +153,6 @@ const generateSchedule = async (req, res) => {
       ORDER BY avg_focus DESC NULLS LAST
     `, [userId]);
 
-    // Get existing scheduled sessions
     const existingEventsResult = await query(`
       SELECT title, start_time, end_time
       FROM scheduled_sessions
@@ -169,7 +160,6 @@ const generateSchedule = async (req, res) => {
       AND status = 'scheduled'
     `, [userId, dateRange]);
 
-    // Generate schedule
     const schedule = await kimiService.generateStudySchedule({
       tasks,
       studyPatterns: studyPatternsResult.rows,
@@ -178,17 +168,14 @@ const generateSchedule = async (req, res) => {
       dateRange
     });
 
-    // Clear old scheduled sessions and save new ones
     if (schedule.sessions && schedule.sessions.length > 0) {
-      // Delete previous generated sessions (optional - keeps schedule fresh)
       await query(`
         DELETE FROM scheduled_sessions 
         WHERE user_id = $1 AND status = 'scheduled' AND start_time > NOW()
       `, [userId]);
 
-      // Save generated sessions
       for (const session of schedule.sessions) {
-        if (session.type === 'break') continue; // Don't save breaks to database
+        if (session.type === 'break') continue;
         
         await query(`
           INSERT INTO scheduled_sessions (user_id, task_id, title, start_time, end_time, description, status)
@@ -264,7 +251,6 @@ const getConversationHistory = async (req, res) => {
     const userId = req.user.id;
     const { limit = 20 } = req.query;
 
-    // Only fetch conversations with valid responses
     const conversationsResult = await query(`
       SELECT user_message, ai_response, created_at
       FROM ai_conversations
@@ -336,35 +322,251 @@ const getScheduledSessions = async (req, res) => {
   }
 };
 
-// Clear conversation history (optional - useful utility)
-const clearConversationHistory = async (req, res) => {
-  try {
-    const userId = req.user.id;
+// ============================================
+// STORY QUEST CONTROLLERS
+// ============================================
 
-    await query(`
-      DELETE FROM ai_conversations
-      WHERE user_id = $1 AND conversation_type = 'chat'
-    `, [userId]);
+// Generate story introduction
+const generateStoryIntroduction = async (req, res) => {
+  try {
+    const { topic } = req.body;
+    
+    if (!topic || topic.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Topic is required'
+      });
+    }
+
+    console.log(`📖 Generating story intro for topic: ${topic}`);
+    
+    const storyIntro = await kimiService.generateStoryIntro(topic.trim());
 
     res.json({
       success: true,
-      message: 'Conversation history cleared'
+      ...storyIntro
     });
 
   } catch (error) {
-    console.error('Clear history error:', error);
+    console.error('Story intro error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to clear history'
+      message: 'Failed to generate story introduction'
     });
   }
 };
 
+// Generate story scene
+const generateScene = async (req, res) => {
+  try {
+    const { topic, chapter, sceneType, context } = req.body;
+    
+    if (!topic || !sceneType) {
+      return res.status(400).json({
+        success: false,
+        message: 'Topic and sceneType are required'
+      });
+    }
+
+    console.log(`🎬 Generating ${sceneType} scene for ${topic} (Chapter ${chapter})`);
+    
+    const scene = await kimiService.generateStoryScene(
+      topic,
+      chapter || 1,
+      sceneType,
+      context || {}
+    );
+
+    res.json({
+      success: true,
+      ...scene
+    });
+
+  } catch (error) {
+    console.error('Scene generation error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate scene'
+    });
+  }
+};
+
+// Generate lesson
+const generateLesson = async (req, res) => {
+  try {
+    const { topic, chapter, conceptNumber } = req.body;
+    
+    if (!topic) {
+      return res.status(400).json({
+        success: false,
+        message: 'Topic is required'
+      });
+    }
+
+    console.log(`📚 Generating lesson for ${topic} (Chapter ${chapter}, Concept ${conceptNumber})`);
+    
+    const lesson = await kimiService.generateStoryLesson(
+      topic,
+      chapter || 1,
+      conceptNumber || 1
+    );
+
+    res.json({
+      success: true,
+      ...lesson
+    });
+
+  } catch (error) {
+    console.error('Lesson generation error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate lesson',
+      type: 'lesson',
+      title: `${req.body.topic} Basics`,
+      text: `Let's learn about ${req.body.topic}. This is an important concept that will help you understand more advanced topics.`,
+      keyPoint: 'Understanding the basics is key to mastery.'
+    });
+  }
+};
+
+// Generate question
+const generateQuestion = async (req, res) => {
+  try {
+    const { topic, difficulty, questionType, previousQuestions, conceptTitle } = req.body;
+    
+    if (!topic) {
+      return res.status(400).json({
+        success: false,
+        message: 'Topic is required'
+      });
+    }
+
+    console.log(`❓ Generating question for ${topic} (difficulty: ${difficulty}, previous: ${previousQuestions?.length || 0})`);
+    
+    const question = await kimiService.generateStoryQuestion(
+      topic,
+      difficulty || 1,
+      questionType || 'multiple_choice',
+      previousQuestions || [],
+      conceptTitle
+    );
+
+    res.json({
+      success: true,
+      ...question
+    });
+
+  } catch (error) {
+    console.error('Question generation error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate question'
+    });
+  }
+};
+
+// Save story quest progress
+const saveStoryProgress = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { topic, chapter, xp, hp, inventory, completed } = req.body;
+
+    // Check if story_quest_progress table exists, create if not
+    await query(`
+      CREATE TABLE IF NOT EXISTS story_quest_progress (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES students(id),
+        topic VARCHAR(255),
+        chapter INTEGER DEFAULT 1,
+        xp INTEGER DEFAULT 0,
+        hp INTEGER DEFAULT 100,
+        inventory JSONB DEFAULT '[]',
+        completed BOOLEAN DEFAULT FALSE,
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(user_id, topic)
+      )
+    `).catch(() => {});
+
+    await query(`
+      INSERT INTO story_quest_progress (user_id, topic, chapter, xp, hp, inventory, completed, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      ON CONFLICT (user_id, topic) 
+      DO UPDATE SET chapter = $3, xp = $4, hp = $5, inventory = $6, completed = $7, updated_at = NOW()
+    `, [userId, topic, chapter, xp, hp, JSON.stringify(inventory || []), completed || false]);
+
+    if (completed) {
+      await query(`
+        UPDATE students 
+        SET experience_points = experience_points + $1
+        WHERE id = $2
+      `, [Math.floor(xp * 0.5), userId]);
+    }
+
+    res.json({
+      success: true,
+      message: 'Progress saved'
+    });
+
+  } catch (error) {
+    console.error('Save progress error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to save progress'
+    });
+  }
+};
+
+// Get story quest progress
+const getStoryProgress = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { topic } = req.query;
+
+    const result = await query(`
+      SELECT * FROM story_quest_progress
+      WHERE user_id = $1 AND topic = $2
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `, [userId, topic]).catch(() => ({ rows: [] }));
+
+    if (result.rows.length > 0) {
+      const progress = result.rows[0];
+      if (progress.inventory && typeof progress.inventory === 'string') {
+        progress.inventory = JSON.parse(progress.inventory);
+      }
+      res.json({
+        success: true,
+        progress
+      });
+    } else {
+      res.json({
+        success: true,
+        progress: null
+      });
+    }
+
+  } catch (error) {
+    console.error('Get progress error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get progress'
+    });
+  }
+};
+
+// ============================================
+// EXPORTS
+// ============================================
 module.exports = {
   chatWithBuddy,
   generateSchedule,
   getStudyTips,
   getConversationHistory,
   getScheduledSessions,
-  clearConversationHistory
+  generateStoryIntroduction,
+  generateScene,
+  generateLesson,
+  generateQuestion,
+  saveStoryProgress,
+  getStoryProgress
 };

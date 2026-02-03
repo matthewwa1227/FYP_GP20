@@ -6,6 +6,10 @@ const { authenticateToken } = require('../middleware/auth');
 // Apply authentication to all routes
 router.use(authenticateToken);
 
+// ============================================
+// STUDY BUDDY ROUTES
+// ============================================
+
 // Chat with Study Buddy
 router.post('/chat', aiController.chatWithBuddy);
 
@@ -20,5 +24,27 @@ router.get('/history', aiController.getConversationHistory);
 
 // Get scheduled sessions
 router.get('/sessions', aiController.getScheduledSessions);
+
+// ============================================
+// STORY QUEST ROUTES
+// ============================================
+
+// Generate story introduction
+router.post('/story/intro', aiController.generateStoryIntroduction);
+
+// Generate story scene (narrative, dialogue, choice, reward, finale)
+router.post('/story/scene', aiController.generateScene);
+
+// Generate lesson content
+router.post('/story/lesson', aiController.generateLesson);
+
+// Generate question
+router.post('/story/question', aiController.generateQuestion);
+
+// Save story progress (optional)
+router.post('/story/progress', aiController.saveStoryProgress);
+
+// Get story progress (optional)
+router.get('/story/progress', aiController.getStoryProgress);
 
 module.exports = router;

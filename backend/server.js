@@ -60,6 +60,7 @@ app.use('/api/tasks', require('./routes/tasks'));
 
 app.use('/api/tutor', require('./routes/tutor'));
 
+app.use('/api/ai/story',require('./routes/aiStory'));
 // ============================================
 // NEW: ROOT API ENDPOINT (FIXES YOUR /api ISSUE)
 // ============================================
@@ -178,51 +179,6 @@ app.listen(PORT, () => {
   console.log(`📍 Port: ${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`✅ http://localhost:${PORT}/api`);  // ← NOW THIS WORKS!
-  console.log(`\n📚 Available Endpoints:`);
-  console.log(`\n  Health & Database:`);
-  console.log(`  - GET  /api/health`);
-  console.log(`  - GET  /api/db/test`);
-  console.log(`\n  Authentication:`);
-  console.log(`  - POST /api/auth/register`);
-  console.log(`  - POST /api/auth/login`);
-  console.log(`  - GET  /api/auth/health`);
-  console.log(`\n  Study Sessions:`);
-  console.log(`  - POST /api/sessions/start`);
-  console.log(`  - POST /api/sessions/:id/end`);
-  console.log(`  - GET  /api/sessions/active`);
-  console.log(`  - GET  /api/sessions/history`);
-  console.log(`\n  Student:`);
-  console.log(`  - GET  /api/student/profile`);
-  console.log(`  - PUT  /api/student/profile`);
-  console.log(`  - GET  /api/student/stats`);
-  console.log(`\n  Tasks:`);
-  console.log(`  - GET  /api/tasks`);
-  console.log(`  - POST /api/tasks`);
-  console.log(`  - PUT  /api/tasks/:id`);
-  console.log(`  - DELETE /api/tasks/:id`);
-  console.log(`  - PATCH /api/tasks/:id/toggle`);
-  console.log(`\n  Achievements:`);
-  console.log(`  - GET  /api/achievements`);
-  console.log(`  - GET  /api/achievements/student`);
-  console.log(`  - POST /api/achievements/check`);
-  console.log(`\n  Leaderboard:`);
-  console.log(`  - GET  /api/leaderboard/global`);
-  console.log(`  - GET  /api/leaderboard/my-rank`);
-  console.log(`\n  Dashboard:`);
-  console.log(`  - GET  /api/dashboard`);
-  console.log(`  - GET  /api/dashboard/stats/weekly`);
-  console.log(`\n  Family:`);
-  console.log(`  - GET  /api/family/connections`);
-  console.log(`  - POST /api/family/invite`);
-  console.log(`  - POST /api/family/accept`);
-  console.log(`  - GET  /api/family/child-progress`);
-  console.log(`\n  AI Features:`);
-  console.log(`  - POST /api/ai/study-tips`);
-  console.log(`  - POST /api/ai/summarize`);
-  console.log(`  - POST /api/ai/quiz-generate`);
-  console.log(`\n  Tutor:`);
-  console.log(`  - POST /api/tutor/ask`);
-  console.log(`  - GET  /api/tutor/history`);
-  console.log(`  - POST /api/tutor/explain`);
+
   console.log(`${'='.repeat(50)}\n`);
 });

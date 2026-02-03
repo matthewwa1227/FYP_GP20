@@ -10,7 +10,7 @@ const kimi = new OpenAI({
 });
 
 // ============================================
-// STUDY BUDDY CHAT (Your existing code)
+// STUDY BUDDY CHAT
 // ============================================
 const chatWithStudyBuddy = async (message, conversationHistory, userContext) => {
   const systemPrompt = `You are "Study Buddy", a friendly and encouraging AI learning companion. Your characteristics:
@@ -73,10 +73,6 @@ Rules:
   } catch (error) {
     console.error('❌ Kimi API error:', error.message);
     
-    if (error.message.includes('empty')) {
-      console.error('❌ Empty message in conversation - check database for invalid entries');
-    }
-    
     const fallbacks = [
       "I'm having a brief connection issue. Try again in a moment! 🔄",
       "我暫時連接不上，請稍後再試！🔄"
@@ -86,15 +82,8 @@ Rules:
 };
 
 // ============================================
-// AI TUTOR - NEW FUNCTIONALITY
+// SEND MESSAGE TO KIMI (Generic function)
 // ============================================
-
-/**
- * Send messages to Kimi for the AI Tutor
- * @param {Array} messages - Array of message objects with role and content
- * @param {Object} options - Optional configuration
- * @returns {Promise<string>} - The AI response text
- */
 const sendMessageToKimi = async (messages, options = {}) => {
   try {
     const {
@@ -103,7 +92,6 @@ const sendMessageToKimi = async (messages, options = {}) => {
       maxTokens = 800
     } = options;
 
-    // Filter and validate messages
     const validMessages = messages.filter(msg => {
       if (!msg || !msg.role || !msg.content) return false;
       if (typeof msg.content !== 'string' || msg.content.trim() === '') return false;
@@ -117,7 +105,7 @@ const sendMessageToKimi = async (messages, options = {}) => {
       throw new Error('No valid messages to send');
     }
 
-    console.log('🎓 Calling Kimi API for tutor...');
+    console.log('🎓 Calling Kimi API...');
     console.log(`   Messages: ${validMessages.length}, Max tokens: ${maxTokens}`);
 
     const completion = await kimi.chat.completions.create({
@@ -128,170 +116,324 @@ const sendMessageToKimi = async (messages, options = {}) => {
     });
 
     if (completion?.choices?.[0]?.message?.content) {
-      console.log('✅ Tutor response received');
+      console.log('✅ Response received');
       return completion.choices[0].message.content;
     }
 
     throw new Error('Invalid response from Kimi API');
 
   } catch (error) {
-    console.error('❌ Kimi Tutor API error:', error.message);
-    
-    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-      throw new Error('AI tutor timed out. Please try again.');
-    }
-    
-    if (error.response?.status === 401) {
-      throw new Error('AI service authentication failed.');
-    }
-    
-    if (error.response?.status === 429) {
-      throw new Error('AI service is busy. Please wait a moment and try again.');
-    }
-    
-    throw new Error('Failed to get tutor response. Please try again.');
+    console.error('❌ Kimi API error:', error.message);
+    throw error;
   }
 };
 
-/**
- * Generate a study hint for a topic
- */
-const generateStudyHint = async (topic, subject) => {
-  const messages = [
-    {
-      role: 'system',
-      content: 'You are a helpful study assistant. Provide brief, encouraging study hints. Respond in the same language the user uses.'
-    },
-    {
-      role: 'user',
-      content: `Give me a quick study tip for learning about "${topic}" in ${subject}. Keep it to 1-2 sentences.`
+// ============================================
+// UTILITY - JSON PARSER
+// ============================================
+function parseJSON(response) {
+  try {
+    // Try to find JSON in the response
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
     }
-  ];
-
-  return sendMessageToKimi(messages, { maxTokens: 150 });
-};
-
-/**
- * Generate a quiz question
- */
-const generateQuizQuestion = async (topic, subject, difficulty = 'medium') => {
-  const messages = [
-    {
-      role: 'system',
-      content: 'You are a quiz generator. Create educational multiple choice questions. Respond in the same language as the topic.'
-    },
-    {
-      role: 'user',
-      content: `Create a ${difficulty} difficulty multiple choice question about "${topic}" in ${subject}. 
-      Format: 
-      Question: [question]
-      A) [option]
-      B) [option]
-      C) [option]
-      D) [option]
-      Correct: [letter]
-      Explanation: [brief explanation]`
-    }
-  ];
-
-  return sendMessageToKimi(messages, { maxTokens: 400 });
-};
+    return null;
+  } catch (error) {
+    console.error('JSON parse error:', error.message);
+    return null;
+  }
+}
 
 // ============================================
-// STUDY SCHEDULE (Your existing code)
+// STORY QUEST - INTRO
+// ============================================
+async function generateStoryIntro(topic) {
+  console.log(`📖 generateStoryIntro called for topic: ${topic}`);
+  
+  try {
+    const prompt = `You are creating the introduction for an educational RPG game.
+Topic: ${topic}
+
+Create an engaging story setup for learning ${topic}. Return ONLY valid JSON (no markdown, no explanation):
+{
+  "title": "A creative adventure title related to ${topic}",
+  "setting": "2-3 sentences describing a magical library/academy setting where the player will learn ${topic}",
+  "mentor_intro": "A warm greeting from a wise owl mentor named Archimedes who will guide them through learning ${topic}"
+}`;
+
+    const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
+      temperature: 0.8,
+      maxTokens: 500 
+    });
+    
+    console.log('📖 Story intro raw response:', response?.substring(0, 100) + '...');
+    
+    const parsed = parseJSON(response);
+    if (parsed && parsed.title) {
+      console.log('✅ Story intro parsed successfully:', parsed.title);
+      return parsed;
+    }
+    
+    console.log('⚠️ Using default intro');
+    return getDefaultIntro(topic);
+  } catch (error) {
+    console.error('❌ Story intro error:', error.message);
+    return getDefaultIntro(topic);
+  }
+}
+
+function getDefaultIntro(topic) {
+  return {
+    title: `The ${topic} Chronicles`,
+    setting: `In the mystical Library of Infinite Knowledge, ancient tomes containing the secrets of ${topic} await those brave enough to seek them. Magical crystals illuminate endless shelves of wisdom.`,
+    mentor_intro: `"Welcome, young scholar! I am Archimedes, keeper of ${topic} wisdom. Together, we shall unlock the mysteries that await. Are you ready to begin your journey?"`
+  };
+}
+
+// ============================================
+// STORY QUEST - SCENE GENERATION
+// ============================================
+async function generateStoryScene(topic, chapter, sceneType, context = {}) {
+  console.log(`🎭 generateStoryScene called: ${sceneType} for chapter ${chapter}`);
+  
+  try {
+    const prompts = {
+      narrative: `Write a short narrative paragraph (2-3 sentences) for chapter ${chapter} of a ${topic} learning adventure. Make it atmospheric and relate it to discovering knowledge about ${topic}.`,
+      dialogue: `Write a brief, encouraging dialogue from the wise owl mentor Archimedes about the player's ${topic} journey. Chapter ${chapter}. Keep it warm and motivating.`,
+      choice: `Create a meaningful choice for the player in their ${topic} learning journey. Chapter ${chapter}. Give 3 options that represent different learning approaches.`,
+      reward: `Describe a magical reward item the player receives for their ${topic} progress. Make it thematic and related to knowledge/wisdom.`,
+      finale: `Write a triumphant 2-3 sentence conclusion for chapter ${chapter} of the ${topic} adventure. Celebrate their learning progress.`
+    };
+
+    const formatInstructions = {
+      narrative: '{"type": "narrative", "text": "your narrative here"}',
+      dialogue: '{"type": "dialogue", "speaker": "Archimedes", "text": "dialogue here"}',
+      choice: '{"type": "choice", "text": "situation description", "speaker": "Archimedes", "choices": [{"text": "option 1", "reward": "courage", "xp": 20}, {"text": "option 2", "reward": "wisdom", "xp": 20}, {"text": "option 3", "reward": "creativity", "xp": 20}]}',
+      reward: '{"type": "reward", "text": "description", "item": {"name": "Item Name", "bonus": "+10% XP"}}',
+      finale: '{"type": "finale", "text": "finale narrative"}'
+    };
+
+    const prompt = `${prompts[sceneType] || prompts.narrative}
+
+Return ONLY valid JSON (no markdown, no explanation) in this exact format:
+${formatInstructions[sceneType] || formatInstructions.narrative}`;
+
+    const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
+      temperature: 0.8,
+      maxTokens: 400 
+    });
+    
+    const parsed = parseJSON(response);
+    if (parsed && parsed.type) {
+      console.log('✅ Scene generated:', parsed.type);
+      return parsed;
+    }
+    
+    return getDefaultScene(sceneType, topic, chapter);
+  } catch (error) {
+    console.error('❌ Scene generation error:', error.message);
+    return getDefaultScene(sceneType, topic, chapter);
+  }
+}
+
+function getDefaultScene(sceneType, topic, chapter) {
+  const defaults = {
+    narrative: { 
+      type: 'narrative', 
+      text: `You venture deeper into the Library of ${topic}. Chapter ${chapter} of your journey continues, with new knowledge waiting to be discovered...` 
+    },
+    dialogue: { 
+      type: 'dialogue', 
+      speaker: 'Archimedes', 
+      text: `"You're making wonderful progress, young scholar! The secrets of ${topic} are slowly revealing themselves to you."` 
+    },
+    choice: {
+      type: 'choice',
+      text: '"How do you wish to proceed on your journey?"',
+      speaker: 'Archimedes',
+      choices: [
+        { text: 'Take the challenging path', reward: 'courage', xp: 25 },
+        { text: 'Seek more preparation', reward: 'wisdom', xp: 20 },
+        { text: 'Trust my instincts', reward: 'flexibility', xp: 20 }
+      ]
+    },
+    reward: { 
+      type: 'reward', 
+      text: `Your dedication to ${topic} has been noticed!`, 
+      item: { name: 'Scroll of Understanding', bonus: '+10% XP' } 
+    },
+    finale: { 
+      type: 'finale', 
+      text: `A warm light fills the Library as you complete this chapter. Your understanding of ${topic} has grown tremendously!` 
+    }
+  };
+  return defaults[sceneType] || defaults.narrative;
+}
+
+// ============================================
+// STORY QUEST - LESSON GENERATION
+// ============================================
+async function generateStoryLesson(topic, chapter, conceptNumber) {
+  console.log(`📚 generateStoryLesson called: ${topic}, chapter ${chapter}, concept ${conceptNumber}`);
+  
+  try {
+    const prompt = `You are an expert teacher creating a mini-lesson for an educational RPG game.
+
+Topic: ${topic}
+Chapter: ${chapter}/4
+Concept Number: ${conceptNumber}
+
+Create a SHORT, engaging lesson teaching ONE specific concept about ${topic}. This should:
+1. Be 2-3 paragraphs maximum
+2. Explain ONE clear concept that a beginner needs to know
+3. Include a simple example or analogy
+4. Be written in an encouraging, adventure-game style
+
+Progressive difficulty:
+- Chapter 1: Basic fundamentals and definitions
+- Chapter 2: Core principles and how things work  
+- Chapter 3: Applying knowledge and common patterns
+- Chapter 4: Advanced concepts and problem-solving
+
+Return ONLY valid JSON (no markdown, no explanation):
+{
+  "title": "Name of this specific concept",
+  "text": "The teaching content with example (2-3 paragraphs)",
+  "keyPoint": "One sentence summary to remember"
+}`;
+
+    const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
+      temperature: 0.7,
+      maxTokens: 600 
+    });
+    
+    const parsed = parseJSON(response);
+    
+    if (parsed && parsed.title) {
+      console.log('✅ Lesson generated:', parsed.title);
+      return {
+        type: 'lesson',
+        title: parsed.title,
+        text: parsed.text,
+        keyPoint: parsed.keyPoint || parsed.key_point
+      };
+    }
+    
+    return getDefaultLesson(topic, chapter);
+  } catch (error) {
+    console.error('❌ Lesson generation error:', error.message);
+    return getDefaultLesson(topic, chapter);
+  }
+}
+
+function getDefaultLesson(topic, chapter) {
+  return {
+    type: 'lesson',
+    title: `${topic} Fundamentals - Chapter ${chapter}`,
+    text: `Welcome to this lesson about ${topic}! Understanding the basics will help you master more advanced topics later.\n\nThink of learning like building a tower - each block of knowledge supports the next. Take your time and make sure you understand each concept before moving on.`,
+    keyPoint: 'Practice and patience are key to mastery.'
+  };
+}
+
+// ============================================
+// STORY QUEST - QUESTION GENERATION
+// ============================================
+async function generateStoryQuestion(topic, difficulty, questionType = 'multiple_choice', previousQuestions = [], conceptTitle = null) {
+  console.log(`❓ generateStoryQuestion called: ${topic}, difficulty ${difficulty}, concept: ${conceptTitle}`);
+  console.log(`   Previous questions count: ${previousQuestions.length}`);
+  
+  try {
+    const excludeList = previousQuestions.length > 0
+      ? `\n\nIMPORTANT: DO NOT repeat these questions that were already asked:\n${previousQuestions.slice(-5).map((q, i) => `${i + 1}. "${q}"`).join('\n')}\n\nCreate a COMPLETELY DIFFERENT question.`
+      : '';
+
+    const prompt = `You are creating a quiz question for an educational RPG game about ${topic}.
+
+Difficulty Level: ${difficulty}/4 (1=beginner, 4=advanced)
+${conceptTitle ? `This question should test understanding of: "${conceptTitle}"` : `Create a question about ${topic} fundamentals.`}
+${excludeList}
+
+Create a multiple choice question that:
+1. Tests real understanding of ${topic}, not just memorization
+2. Has exactly 4 choices with ONLY ONE correct answer
+3. Is appropriate for difficulty level ${difficulty}
+4. Has plausible but clearly wrong distractors
+5. Is educational and helps the learner understand ${topic} better
+
+Return ONLY valid JSON (no markdown, no explanation):
+{
+  "question": "Your specific question about ${topic} here?",
+  "choices": [
+    {"text": "The correct answer", "correct": true},
+    {"text": "Plausible wrong answer 1", "correct": false},
+    {"text": "Plausible wrong answer 2", "correct": false},
+    {"text": "Plausible wrong answer 3", "correct": false}
+  ],
+  "explanation": "Brief explanation of why the correct answer is right (1-2 sentences)"
+}`;
+
+    const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
+      temperature: 0.9,
+      maxTokens: 500 
+    });
+    
+    const parsed = parseJSON(response);
+
+    if (parsed && parsed.choices && Array.isArray(parsed.choices) && parsed.choices.length === 4) {
+      // Shuffle choices
+      const shuffledChoices = [...parsed.choices].sort(() => Math.random() - 0.5);
+      
+      console.log('✅ Question generated:', parsed.question?.substring(0, 50) + '...');
+      
+      return {
+        type: 'question',
+        text: parsed.question,
+        choices: shuffledChoices,
+        explanation: parsed.explanation,
+        xp: 20 + (difficulty * 10)
+      };
+    }
+
+    console.log('⚠️ Using default question');
+    return getDefaultQuestion(topic, difficulty);
+  } catch (error) {
+    console.error('❌ Question generation error:', error.message);
+    return getDefaultQuestion(topic, difficulty);
+  }
+}
+
+function getDefaultQuestion(topic, difficulty) {
+  return {
+    type: 'question',
+    text: `What is essential for mastering ${topic}?`,
+    choices: [
+      { text: 'Consistent practice and understanding concepts', correct: true },
+      { text: 'Memorizing without understanding', correct: false },
+      { text: 'Skipping the fundamentals', correct: false },
+      { text: 'Avoiding challenging problems', correct: false }
+    ].sort(() => Math.random() - 0.5),
+    explanation: `Consistent practice combined with conceptual understanding is the key to mastering ${topic}.`,
+    xp: 20 + (difficulty * 10)
+  };
+}
+
+// ============================================
+// STUDY SCHEDULE
 // ============================================
 const generateStudySchedule = async ({ tasks, studyPatterns, existingEvents, preferences, dateRange }) => {
   if (!tasks || tasks.length === 0) {
     return {
       sessions: [],
       summary: 'No pending tasks to schedule. Add some tasks first!',
-      tips: [
-        'Break large projects into smaller tasks',
-        'Set realistic deadlines for each task',
-        'Prioritize tasks by urgency and importance'
-      ]
+      tips: ['Break large projects into smaller tasks', 'Set realistic deadlines']
     };
   }
 
-  try {
-    console.log('🚀 Calling Kimi API for schedule generation...');
-    console.log('📝 Tasks count:', tasks.length);
-    console.log('📝 Date range:', dateRange, 'days');
-
-    const now = new Date();
-    const sessionLength = preferences.sessionLength || 45;
-    const breakLength = preferences.breakLength || 10;
-
-    const systemPrompt = `You are a study schedule optimizer. Return ONLY valid JSON, no explanations.`;
-
-    const userPrompt = `Create study schedule. Current time: ${now.toISOString()}
-
-Tasks (${tasks.length}):
-${tasks.slice(0, 5).map(t => `- ID:${t.id} "${t.title}" ${t.priority || 'medium'} priority, ${t.estimated_duration || 30}min`).join('\n')}
-
-Settings: ${sessionLength}min sessions, ${breakLength}min breaks, ${preferences.preferredStartTime || '09:00'}-${preferences.preferredEndTime || '21:00'}
-
-Return JSON:
-{"sessions":[{"taskId":number,"title":"string","startTime":"ISO","endTime":"ISO","type":"study","priority":"high/medium/low"}],"summary":"string","tips":["tip1","tip2"]}`;
-
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Custom timeout')), 15000)
-    );
-
-    const apiPromise = kimi.chat.completions.create({
-      model: 'moonshot-v1-8k',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      max_tokens: 1500,
-      temperature: 0.5
-    });
-
-    const completion = await Promise.race([apiPromise, timeoutPromise]);
-    const responseText = completion.choices[0].message.content;
-    
-    console.log('✅ Kimi API response received');
-
-    let jsonStr = responseText;
-    const codeBlockMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (codeBlockMatch) {
-      jsonStr = codeBlockMatch[1].trim();
-    }
-    
-    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      
-      if (parsed.sessions && Array.isArray(parsed.sessions) && parsed.sessions.length > 0) {
-        parsed.sessions = parsed.sessions.filter(session => {
-          try {
-            const start = new Date(session.startTime);
-            const end = new Date(session.endTime);
-            return !isNaN(start.getTime()) && !isNaN(end.getTime()) && start < end;
-          } catch {
-            return false;
-          }
-        });
-
-        if (parsed.sessions.length > 0) {
-          console.log('✅ AI generated', parsed.sessions.length, 'valid sessions');
-          return parsed;
-        }
-      }
-    }
-    
-    console.log('⚠️ AI response invalid, using fallback');
-    return generateSmartFallbackSchedule(tasks, dateRange, preferences);
-
-  } catch (error) {
-    console.error('❌ Schedule generation error:', error.message);
-    console.log('📋 Using smart fallback scheduler...');
-    return generateSmartFallbackSchedule(tasks, dateRange, preferences);
-  }
+  // Use fallback for reliability
+  return generateSmartFallbackSchedule(tasks, dateRange, preferences);
 };
 
-// Smart fallback schedule generator
 const generateSmartFallbackSchedule = (tasks, dateRange, preferences = {}) => {
   const sessions = [];
   const now = new Date();
@@ -300,215 +442,72 @@ const generateSmartFallbackSchedule = (tasks, dateRange, preferences = {}) => {
   const breakLength = preferences.breakLength || 10;
   const startHour = parseInt(preferences.preferredStartTime?.split(':')[0]) || 9;
   const endHour = parseInt(preferences.preferredEndTime?.split(':')[0]) || 21;
-  
-  console.log('📋 Generating fallback schedule...');
-  console.log(`   Sessions: ${sessionLength}min, Breaks: ${breakLength}min`);
-  console.log(`   Hours: ${startHour}:00 - ${endHour}:00`);
 
   const sortedTasks = [...tasks].sort((a, b) => {
     const priorityWeight = { high: 3, medium: 2, low: 1 };
-    const aPriority = priorityWeight[a.priority] || 2;
-    const bPriority = priorityWeight[b.priority] || 2;
-    
-    const aDate = a.due_date ? new Date(a.due_date) : new Date('2099-12-31');
-    const bDate = b.due_date ? new Date(b.due_date) : new Date('2099-12-31');
-    
-    if (bPriority !== aPriority) return bPriority - aPriority;
-    return aDate - bDate;
+    return (priorityWeight[b.priority] || 2) - (priorityWeight[a.priority] || 2);
   });
 
-  const availableHours = endHour - startHour;
-  const sessionWithBreak = sessionLength + breakLength;
-  const maxSessionsPerDay = Math.floor((availableHours * 60) / sessionWithBreak);
-  const sessionsPerDay = Math.min(maxSessionsPerDay, 4);
-  
   let currentDate = new Date(now);
-  if (currentDate.getHours() >= startHour + 2) {
-    currentDate.setDate(currentDate.getDate() + 1);
-  }
+  currentDate.setDate(currentDate.getDate() + 1);
   currentDate.setHours(startHour, 0, 0, 0);
   
-  let dayCount = 0;
   let sessionInDay = 0;
-  
-  for (let i = 0; i < sortedTasks.length && dayCount < dateRange; i++) {
-    const task = sortedTasks[i];
-    const taskDuration = task.estimated_duration || task.estimatedMinutes || sessionLength;
-    const sessionsNeeded = Math.ceil(taskDuration / sessionLength);
-    
-    for (let s = 0; s < sessionsNeeded && dayCount < dateRange; s++) {
-      if (sessionInDay >= sessionsPerDay) {
-        currentDate.setDate(currentDate.getDate() + 1);
-        currentDate.setHours(startHour, 0, 0, 0);
-        sessionInDay = 0;
-        dayCount++;
-        if (dayCount >= dateRange) break;
-      }
-      
-      const startTime = new Date(currentDate);
-      const endTime = new Date(startTime);
-      endTime.setMinutes(endTime.getMinutes() + sessionLength);
-      
-      sessions.push({
-        taskId: task.id,
-        title: sessionsNeeded > 1 ? `${task.title} (Part ${s + 1}/${sessionsNeeded})` : task.title,
-        subject: task.subject || 'General',
-        priority: task.priority || 'medium',
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(),
-        description: task.description || `Study session for ${task.title}`,
-        type: 'study'
-      });
-      
-      if (sessionInDay < sessionsPerDay - 1) {
-        const breakStart = new Date(endTime);
-        const breakEnd = new Date(breakStart);
-        breakEnd.setMinutes(breakEnd.getMinutes() + breakLength);
-        
-        sessions.push({
-          taskId: null,
-          title: 'Break',
-          startTime: breakStart.toISOString(),
-          endTime: breakEnd.toISOString(),
-          description: 'Rest and recharge',
-          type: 'break'
-        });
-        
-        currentDate = new Date(breakEnd);
-      } else {
-        currentDate = new Date(endTime);
-      }
-      
-      sessionInDay++;
-      
-      if (currentDate.getHours() >= endHour - 1) {
-        currentDate.setDate(currentDate.getDate() + 1);
-        currentDate.setHours(startHour, 0, 0, 0);
-        sessionInDay = 0;
-        dayCount++;
-      }
+  const sessionsPerDay = 4;
+
+  for (const task of sortedTasks.slice(0, 10)) {
+    if (sessionInDay >= sessionsPerDay) {
+      currentDate.setDate(currentDate.getDate() + 1);
+      currentDate.setHours(startHour, 0, 0, 0);
+      sessionInDay = 0;
     }
+    
+    const startTime = new Date(currentDate);
+    const endTime = new Date(startTime);
+    endTime.setMinutes(endTime.getMinutes() + sessionLength);
+    
+    sessions.push({
+      taskId: task.id,
+      title: task.title,
+      priority: task.priority || 'medium',
+      startTime: startTime.toISOString(),
+      endTime: endTime.toISOString(),
+      type: 'study'
+    });
+    
+    currentDate.setMinutes(currentDate.getMinutes() + sessionLength + breakLength);
+    sessionInDay++;
   }
-  
-  if (sessions.length > 0 && sessions[sessions.length - 1].type === 'break') {
-    sessions.pop();
-  }
-  
-  const studySessions = sessions.filter(s => s.type === 'study');
-  const totalMinutes = studySessions.length * sessionLength;
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  const daysUsed = Math.min(dayCount + 1, dateRange);
-  
-  console.log(`✅ Generated ${studySessions.length} study sessions across ${daysUsed} days`);
-  
-  const tips = generateContextualTips(sortedTasks, preferences);
   
   return {
     sessions,
-    summary: `📅 Created ${studySessions.length} study sessions across ${daysUsed} days. Total study time: ${hours}h ${minutes}m. ${
-      sortedTasks.filter(t => t.priority === 'high').length > 0 
-        ? 'High-priority tasks scheduled first!' 
-        : ''
-    }`,
-    tips
+    summary: `Created ${sessions.length} study sessions`,
+    tips: ['High-priority tasks scheduled first!', 'Take breaks seriously!']
   };
 };
 
-// Generate contextual tips
-const generateContextualTips = (tasks, preferences) => {
-  const tips = [];
-  
-  const highPriorityCount = tasks.filter(t => t.priority === 'high').length;
-  const totalTasks = tasks.length;
-  const sessionLength = preferences.sessionLength || 45;
-  
-  if (highPriorityCount > 0) {
-    tips.push(`🔥 You have ${highPriorityCount} high-priority task${highPriorityCount > 1 ? 's' : ''} - these are scheduled first!`);
-  }
-  
-  if (sessionLength <= 30) {
-    tips.push('⚡ Short sessions work great for maintaining focus. Take breaks seriously!');
-  } else if (sessionLength >= 60) {
-    tips.push('📚 Longer sessions are great for deep work. Stay hydrated and take stretch breaks!');
-  } else {
-    tips.push('⏱️ Your session length is optimal for the Pomodoro technique!');
-  }
-  
-  if (totalTasks > 5) {
-    tips.push('📋 You have many tasks - consider which ones can be delegated or postponed.');
-  }
-  
-  tips.push('🎯 Review completed tasks at the end of each day to track progress.');
-  tips.push('💪 Consistency beats intensity - stick to your schedule!');
-  
-  return tips.slice(0, 5);
-};
-
 // ============================================
-// STUDY TIPS (Your existing code)
+// STUDY TIPS
 // ============================================
 const generateStudyTips = async ({ subject, difficulty, performance }) => {
-  try {
-    console.log('🚀 Calling Kimi API for study tips...');
-    
-    const completion = await kimi.chat.completions.create({
-      model: 'moonshot-v1-8k',
-      messages: [
-        { role: 'system', content: 'Give 3-5 specific study tips. Return ONLY a JSON array.' },
-        { role: 'user', content: `Tips for ${subject || 'General'} (${difficulty || 'Medium'} difficulty). Return: ["tip1", "tip2", "tip3"]` }
-      ],
-      max_tokens: 500,
-      temperature: 0.7
-    });
-
-    const responseText = completion.choices[0].message.content;
-    const jsonMatch = responseText.match(/\[[\s\S]*?\]/);
-    
-    if (jsonMatch) {
-      const tips = JSON.parse(jsonMatch[0]);
-      console.log('✅ Got', tips.length, 'tips from AI');
-      return tips;
-    }
-    
-    return getDefaultTips(subject, difficulty);
-  } catch (error) {
-    console.error('❌ Tips generation error:', error.message);
-    return getDefaultTips(subject, difficulty);
-  }
-};
-
-const getDefaultTips = (subject, difficulty) => {
-  const tips = [
-    "Break your study into 25-minute focused sessions (Pomodoro Technique)",
+  return [
+    "Break your study into 25-minute focused sessions",
     "Review material within 24 hours to improve retention",
     "Test yourself instead of just re-reading notes",
-    "Teach concepts to someone else to solidify understanding",
-    "Get enough sleep - it's crucial for memory consolidation"
+    "Get enough sleep - it's crucial for memory"
   ];
-  
-  if (difficulty === 'hard') {
-    tips.unshift("Start with the most challenging material when your mind is fresh");
-  }
-  
-  if (subject?.toLowerCase().includes('math')) {
-    tips.unshift("Practice problems actively rather than just reading solutions");
-  }
-  
-  return tips.slice(0, 5);
 };
 
 // ============================================
 // EXPORTS
 // ============================================
 module.exports = {
-  // Existing exports
   chatWithStudyBuddy,
-  generateStudySchedule,
-  generateStudyTips,
-  
-  // New tutor exports
   sendMessageToKimi,
-  generateStudyHint,
-  generateQuizQuestion
+  generateStoryIntro,
+  generateStoryScene,
+  generateStoryLesson,
+  generateStoryQuestion,
+  generateStudySchedule,
+  generateStudyTips
 };
