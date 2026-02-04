@@ -1,6 +1,5 @@
 const OpenAI = require('openai');
 
-// Debug: Check if API key is loaded
 console.log('🔑 Kimi API Key loaded:', process.env.KIMI_API_KEY ? 'Yes (length: ' + process.env.KIMI_API_KEY.length + ')' : 'NO - MISSING!');
 
 const kimi = new OpenAI({
@@ -62,16 +61,21 @@ Rules:
     console.log('🚀 Calling Kimi API for chat...');
     
     const completion = await kimi.chat.completions.create({
-      model: 'moonshot-v1-8k',
+      model: 'kimi-k2.5',
       messages,
-      max_tokens: 500,
-      temperature: 0.7
+      max_tokens: 1000,
+      // K2.5 requires specific temperature values
+      // With thinking disabled: must be 0.6
+      // With thinking enabled: must be 1.0
+      thinking: { type: 'disabled' }
+      // Don't set temperature - let it use the default 0.6 for disabled mode
     });
 
     console.log('✅ Kimi API response received');
     return completion.choices[0].message.content;
   } catch (error) {
     console.error('❌ Kimi API error:', error.message);
+    console.error('❌ Full error details:', error.response?.data || error);
     
     const fallbacks = [
       "I'm having a brief connection issue. Try again in a moment! 🔄",
@@ -87,9 +91,9 @@ Rules:
 const sendMessageToKimi = async (messages, options = {}) => {
   try {
     const {
-      model = 'moonshot-v1-8k',
-      temperature = 0.7,
-      maxTokens = 800
+      model = 'kimi-k2.5',
+      maxTokens = 1000,
+      useThinking = false  // New option to control thinking mode
     } = options;
 
     const validMessages = messages.filter(msg => {
@@ -106,13 +110,14 @@ const sendMessageToKimi = async (messages, options = {}) => {
     }
 
     console.log('🎓 Calling Kimi API...');
-    console.log(`   Messages: ${validMessages.length}, Max tokens: ${maxTokens}`);
+    console.log(`   Messages: ${validMessages.length}, Max tokens: ${maxTokens}, Thinking: ${useThinking}`);
 
     const completion = await kimi.chat.completions.create({
       model,
       messages: validMessages,
       max_tokens: maxTokens,
-      temperature
+      thinking: { type: useThinking ? 'enabled' : 'disabled' }
+      // Remove temperature - K2.5 uses fixed values (1.0 for thinking, 0.6 for non-thinking)
     });
 
     if (completion?.choices?.[0]?.message?.content) {
@@ -124,6 +129,7 @@ const sendMessageToKimi = async (messages, options = {}) => {
 
   } catch (error) {
     console.error('❌ Kimi API error:', error.message);
+    console.error('❌ Error details:', error.response?.data || error);
     throw error;
   }
 };
@@ -133,7 +139,6 @@ const sendMessageToKimi = async (messages, options = {}) => {
 // ============================================
 function parseJSON(response) {
   try {
-    // Try to find JSON in the response
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       return JSON.parse(jsonMatch[0]);
@@ -163,7 +168,6 @@ Create an engaging story setup for learning ${topic}. Return ONLY valid JSON (no
 }`;
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
-      temperature: 0.8,
       maxTokens: 500 
     });
     
@@ -220,7 +224,6 @@ Return ONLY valid JSON (no markdown, no explanation) in this exact format:
 ${formatInstructions[sceneType] || formatInstructions.narrative}`;
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
-      temperature: 0.8,
       maxTokens: 400 
     });
     
@@ -304,7 +307,6 @@ Return ONLY valid JSON (no markdown, no explanation):
 }`;
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
-      temperature: 0.7,
       maxTokens: 600 
     });
     
@@ -374,14 +376,12 @@ Return ONLY valid JSON (no markdown, no explanation):
 }`;
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
-      temperature: 0.9,
       maxTokens: 500 
     });
     
     const parsed = parseJSON(response);
 
     if (parsed && parsed.choices && Array.isArray(parsed.choices) && parsed.choices.length === 4) {
-      // Shuffle choices
       const shuffledChoices = [...parsed.choices].sort(() => Math.random() - 0.5);
       
       console.log('✅ Question generated:', parsed.question?.substring(0, 50) + '...');
@@ -430,7 +430,6 @@ const generateStudySchedule = async ({ tasks, studyPatterns, existingEvents, pre
     };
   }
 
-  // Use fallback for reliability
   return generateSmartFallbackSchedule(tasks, dateRange, preferences);
 };
 
