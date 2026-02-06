@@ -1,3 +1,5 @@
+// middleware/auth.js
+
 const jwt = require('jsonwebtoken');
 
 const authenticateToken = (req, res, next) => {
@@ -20,14 +22,15 @@ const authenticateToken = (req, res, next) => {
         });
       }
 
-      // Set BOTH req.user and req.student for compatibility
       req.user = {
         id: decoded.studentId || decoded.id,
         email: decoded.email,
         username: decoded.username,
-        role: decoded.role || 'student'
+        role: decoded.role || 'student',
+        formLevel: decoded.formLevel || null,
+        ageTier: decoded.ageTier || null
       };
-      
+
       // Backwards compatibility
       req.student = req.user;
 
@@ -63,7 +66,9 @@ const optionalAuth = (req, res, next) => {
           id: decoded.studentId || decoded.id,
           email: decoded.email,
           username: decoded.username,
-          role: decoded.role || 'student'
+          role: decoded.role || 'student',
+          formLevel: decoded.formLevel || null,
+          ageTier: decoded.ageTier || null
         };
         req.student = req.user;
       }

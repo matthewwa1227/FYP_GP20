@@ -1,3 +1,5 @@
+// services/kimiService.js
+
 const OpenAI = require('openai');
 
 console.log('🔑 Kimi API Key loaded:', process.env.KIMI_API_KEY ? 'Yes (length: ' + process.env.KIMI_API_KEY.length + ')' : 'NO - MISSING!');
@@ -9,9 +11,71 @@ const kimi = new OpenAI({
 });
 
 // ============================================
+// TIER-AWARE PROMPT HELPERS
+// ============================================
+
+const TIER_PROMPT_CONFIG = {
+  'P1-P3': {
+    label: 'Primary 1-3 (ages 6-8)',
+    language: 'Use very simple English with short sentences (max 10-12 words each). Use basic vocabulary only. Be extremely encouraging and gentle.',
+    contentDepth: 'Introduce ONE simple idea at a time. Use concrete, everyday examples (toys, food, animals, family). Avoid abstract reasoning.',
+    questionStyle: 'Ask simple recall or identification questions. Wrong answers should be obviously wrong. Keep all answer text under 8 words each.',
+    storyTone: 'Magical, friendly, and playful. Use cute characters and bright imagery. Lots of encouragement and celebration.',
+    exampleContext: 'Hong Kong primary school life — MTR rides, dim sum, Ocean Park, school uniforms, red packets'
+  },
+  'P4-P6': {
+    label: 'Primary 4-6 (ages 9-11)',
+    language: 'Use clear, simple English with moderate sentence length. Introduce subject-specific vocabulary with brief definitions.',
+    contentDepth: 'Explain concepts with relatable everyday examples. Include one simple analogy per lesson. Build on foundational knowledge.',
+    questionStyle: 'Test understanding and simple application. Distractors should be plausible but distinguishable. Keep answers under 15 words each.',
+    storyTone: 'Adventurous and exploratory. The player discovers knowledge through quests. Encourage curiosity and teamwork.',
+    exampleContext: 'Hong Kong school projects, local geography (Victoria Harbour, Lion Rock), festivals, public transport systems'
+  },
+  'S1-S3': {
+    label: 'Secondary 1-3 (ages 12-14)',
+    language: 'Use standard academic English. Introduce proper terminology with clear explanations. Moderate complexity.',
+    contentDepth: 'Explain principles and their connections. Include cause-and-effect reasoning. Use real-world applications relevant to Hong Kong.',
+    questionStyle: 'Test application and analysis. Distractors should require careful thinking to eliminate. Include "why" and "how" questions.',
+    storyTone: 'Mystery and investigation themed. The player solves problems using knowledge. Respectful and intellectually engaging.',
+    exampleContext: 'Hong Kong current affairs, local industries, environmental issues, technology in daily life, STEM applications'
+  },
+  'S4-S6': {
+    label: 'Secondary 4-6 (ages 15-17, DSE preparation)',
+    language: 'Use academic and technical language appropriate for HKDSE level. Precise terminology expected.',
+    contentDepth: 'Cover advanced concepts with depth. Include multiple perspectives, edge cases, and exam-relevant patterns. Reference HKDSE marking schemes where applicable.',
+    questionStyle: 'DSE-style questions testing analysis, evaluation, and synthesis. Distractors should reflect common student misconceptions. Include multi-step reasoning.',
+    storyTone: 'Real-world professional scenarios. The player acts as a researcher, analyst, or problem-solver. Mature and motivating without being patronizing.',
+    exampleContext: 'Hong Kong economy, governance, university preparation, career pathways, global connections from HK perspective'
+  }
+};
+
+function getTierPrompt(tierInfo) {
+  if (!tierInfo || !tierInfo.ageTier) {
+    return TIER_PROMPT_CONFIG['P4-P6']; // Safe default
+  }
+  return TIER_PROMPT_CONFIG[tierInfo.ageTier] || TIER_PROMPT_CONFIG['P4-P6'];
+}
+
+function buildTierInstructions(tierInfo) {
+  const tier = getTierPrompt(tierInfo);
+  return `
+TARGET STUDENT: ${tier.label}
+${tierInfo?.formLevel ? `Form Level: ${tierInfo.formLevel}` : ''}
+LANGUAGE LEVEL: ${tier.language}
+CONTENT DEPTH: ${tier.contentDepth}
+LOCAL CONTEXT: Use examples from ${tier.exampleContext}
+STORY TONE: ${tier.storyTone}`;
+}
+
+// ============================================
 // STUDY BUDDY CHAT
 // ============================================
 const chatWithStudyBuddy = async (message, conversationHistory, userContext) => {
+  // Determine tier prompt additions if available
+  const tierExtra = userContext.ageTier
+    ? `\n- Form Level: ${userContext.formLevel || 'unknown'}\n- Age Tier: ${userContext.ageTier}\nAdjust your language complexity to match their age group.`
+    : '';
+
   const systemPrompt = `You are "Study Buddy", a friendly and encouraging AI learning companion. Your characteristics:
 - Encouraging and positive, but not overly enthusiastic
 - Knowledgeable but explains things simply
@@ -25,7 +89,7 @@ User Background:
 - Study Streak: ${userContext.current_streak || 0} days
 - Completed Tasks: ${userContext.completed_tasks || 0}
 - Pending Tasks: ${userContext.pending_tasks || 0}
-- Today's Study Time: ${userContext.today_study_minutes || 0} minutes
+- Today's Study Time: ${userContext.today_study_minutes || 0} minutes${tierExtra}
 
 Rules:
 1. Keep responses concise (usually 2-4 sentences)
@@ -64,11 +128,7 @@ Rules:
       model: 'kimi-k2.5',
       messages,
       max_tokens: 1000,
-      // K2.5 requires specific temperature values
-      // With thinking disabled: must be 0.6
-      // With thinking enabled: must be 1.0
       thinking: { type: 'disabled' }
-      // Don't set temperature - let it use the default 0.6 for disabled mode
     });
 
     console.log('✅ Kimi API response received');
@@ -93,7 +153,7 @@ const sendMessageToKimi = async (messages, options = {}) => {
     const {
       model = 'kimi-k2.5',
       maxTokens = 1000,
-      useThinking = false  // New option to control thinking mode
+      useThinking = false
     } = options;
 
     const validMessages = messages.filter(msg => {
@@ -117,7 +177,6 @@ const sendMessageToKimi = async (messages, options = {}) => {
       messages: validMessages,
       max_tokens: maxTokens,
       thinking: { type: useThinking ? 'enabled' : 'disabled' }
-      // Remove temperature - K2.5 uses fixed values (1.0 for thinking, 0.6 for non-thinking)
     });
 
     if (completion?.choices?.[0]?.message?.content) {
@@ -151,20 +210,25 @@ function parseJSON(response) {
 }
 
 // ============================================
-// STORY QUEST - INTRO
+// STORY QUEST - INTRO (tier-aware)
 // ============================================
-async function generateStoryIntro(topic) {
-  console.log(`📖 generateStoryIntro called for topic: ${topic}`);
+async function generateStoryIntro(topic, tierInfo = null) {
+  console.log(`📖 generateStoryIntro called for topic: ${topic}, tier: ${tierInfo?.ageTier || 'default'}`);
+  
+  const tier = getTierPrompt(tierInfo);
   
   try {
     const prompt = `You are creating the introduction for an educational RPG game.
 Topic: ${topic}
+${buildTierInstructions(tierInfo)}
 
-Create an engaging story setup for learning ${topic}. Return ONLY valid JSON (no markdown, no explanation):
+Create an engaging story setup for learning ${topic}. The tone should be: ${tier.storyTone}
+
+Return ONLY valid JSON (no markdown, no explanation):
 {
   "title": "A creative adventure title related to ${topic}",
-  "setting": "2-3 sentences describing a magical library/academy setting where the player will learn ${topic}",
-  "mentor_intro": "A warm greeting from a wise owl mentor named Archimedes who will guide them through learning ${topic}"
+  "setting": "2-3 sentences describing the game world where the player will learn ${topic}. Match the tone to the student's age group.",
+  "mentor_intro": "A warm greeting from a wise mentor character who will guide them. Match language complexity to the student's level."
 }`;
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
@@ -196,18 +260,26 @@ function getDefaultIntro(topic) {
 }
 
 // ============================================
-// STORY QUEST - SCENE GENERATION
+// STORY QUEST - SCENE GENERATION (tier-aware)
 // ============================================
 async function generateStoryScene(topic, chapter, sceneType, context = {}) {
   console.log(`🎭 generateStoryScene called: ${sceneType} for chapter ${chapter}`);
   
+  // Extract tierInfo from context if provided
+  const tierInfo = context.tierInfo || null;
+  const tier = getTierPrompt(tierInfo);
+  
   try {
+    const tierInstructions = tierInfo
+      ? `\n${buildTierInstructions(tierInfo)}\n`
+      : '';
+
     const prompts = {
-      narrative: `Write a short narrative paragraph (2-3 sentences) for chapter ${chapter} of a ${topic} learning adventure. Make it atmospheric and relate it to discovering knowledge about ${topic}.`,
-      dialogue: `Write a brief, encouraging dialogue from the wise owl mentor Archimedes about the player's ${topic} journey. Chapter ${chapter}. Keep it warm and motivating.`,
-      choice: `Create a meaningful choice for the player in their ${topic} learning journey. Chapter ${chapter}. Give 3 options that represent different learning approaches.`,
-      reward: `Describe a magical reward item the player receives for their ${topic} progress. Make it thematic and related to knowledge/wisdom.`,
-      finale: `Write a triumphant 2-3 sentence conclusion for chapter ${chapter} of the ${topic} adventure. Celebrate their learning progress.`
+      narrative: `Write a short narrative paragraph (2-3 sentences) for chapter ${chapter} of a ${topic} learning adventure.${tierInstructions}Make it atmospheric and relate it to discovering knowledge about ${topic}. Tone: ${tier.storyTone}`,
+      dialogue: `Write a brief, encouraging dialogue from the wise mentor about the player's ${topic} journey. Chapter ${chapter}.${tierInstructions}Keep it warm and motivating. Tone: ${tier.storyTone}`,
+      choice: `Create a meaningful choice for the player in their ${topic} learning journey. Chapter ${chapter}.${tierInstructions}Give 3 options that represent different learning approaches. Tone: ${tier.storyTone}`,
+      reward: `Describe a magical reward item the player receives for their ${topic} progress.${tierInstructions}Make it thematic and age-appropriate. Tone: ${tier.storyTone}`,
+      finale: `Write a triumphant 2-3 sentence conclusion for chapter ${chapter} of the ${topic} adventure.${tierInstructions}Celebrate their learning progress. Tone: ${tier.storyTone}`
     };
 
     const formatInstructions = {
@@ -275,34 +347,38 @@ function getDefaultScene(sceneType, topic, chapter) {
 }
 
 // ============================================
-// STORY QUEST - LESSON GENERATION
+// STORY QUEST - LESSON GENERATION (tier-aware)
 // ============================================
-async function generateStoryLesson(topic, chapter, conceptNumber) {
-  console.log(`📚 generateStoryLesson called: ${topic}, chapter ${chapter}, concept ${conceptNumber}`);
+async function generateStoryLesson(topic, chapter, conceptNumber, tierInfo = null) {
+  console.log(`📚 generateStoryLesson called: ${topic}, chapter ${chapter}, concept ${conceptNumber}, tier: ${tierInfo?.ageTier || 'default'}`);
+  
+  const tier = getTierPrompt(tierInfo);
+  const totalChapters = tierInfo?.totalChapters || 4;
   
   try {
-    const prompt = `You are an expert teacher creating a mini-lesson for an educational RPG game.
+    const prompt = `You are an expert teacher creating a mini-lesson for an educational RPG game set in Hong Kong.
 
 Topic: ${topic}
-Chapter: ${chapter}/4
+Chapter: ${chapter}/${totalChapters}
 Concept Number: ${conceptNumber}
+${buildTierInstructions(tierInfo)}
 
 Create a SHORT, engaging lesson teaching ONE specific concept about ${topic}. This should:
 1. Be 2-3 paragraphs maximum
-2. Explain ONE clear concept that a beginner needs to know
-3. Include a simple example or analogy
+2. ${tier.contentDepth}
+3. ${tier.language}
 4. Be written in an encouraging, adventure-game style
 
-Progressive difficulty:
-- Chapter 1: Basic fundamentals and definitions
-- Chapter 2: Core principles and how things work  
-- Chapter 3: Applying knowledge and common patterns
-- Chapter 4: Advanced concepts and problem-solving
+Progressive difficulty across chapters:
+- Early chapters: Basic fundamentals, definitions, and introductions
+- Middle chapters: Core principles, how things work, and connections
+- Later chapters: Applying knowledge, patterns, and problem-solving
+- Final chapters: Advanced concepts, synthesis, and mastery challenges
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
   "title": "Name of this specific concept",
-  "text": "The teaching content with example (2-3 paragraphs)",
+  "text": "The teaching content with example (2-3 paragraphs, age-appropriate)",
   "keyPoint": "One sentence summary to remember"
 }`;
 
@@ -339,29 +415,34 @@ function getDefaultLesson(topic, chapter) {
 }
 
 // ============================================
-// STORY QUEST - QUESTION GENERATION
+// STORY QUEST - QUESTION GENERATION (tier-aware)
 // ============================================
-async function generateStoryQuestion(topic, difficulty, questionType = 'multiple_choice', previousQuestions = [], conceptTitle = null) {
-  console.log(`❓ generateStoryQuestion called: ${topic}, difficulty ${difficulty}, concept: ${conceptTitle}`);
+async function generateStoryQuestion(topic, difficulty, questionType = 'multiple_choice', previousQuestions = [], conceptTitle = null, tierInfo = null) {
+  console.log(`❓ generateStoryQuestion called: ${topic}, difficulty ${difficulty}, concept: ${conceptTitle}, tier: ${tierInfo?.ageTier || 'default'}`);
   console.log(`   Previous questions count: ${previousQuestions.length}`);
+  
+  const tier = getTierPrompt(tierInfo);
   
   try {
     const excludeList = previousQuestions.length > 0
       ? `\n\nIMPORTANT: DO NOT repeat these questions that were already asked:\n${previousQuestions.slice(-5).map((q, i) => `${i + 1}. "${q}"`).join('\n')}\n\nCreate a COMPLETELY DIFFERENT question.`
       : '';
 
+    const totalChapters = tierInfo?.totalChapters || 4;
+
     const prompt = `You are creating a quiz question for an educational RPG game about ${topic}.
 
-Difficulty Level: ${difficulty}/4 (1=beginner, 4=advanced)
-${conceptTitle ? `This question should test understanding of: "${conceptTitle}"` : `Create a question about ${topic} fundamentals.`}
+Difficulty Level: ${difficulty}/${totalChapters} (1=beginner, ${totalChapters}=advanced)
+${buildTierInstructions(tierInfo)}
+${conceptTitle ? `This question should test understanding of: "${conceptTitle}"` : `Create a question about ${topic} appropriate for this difficulty level.`}
 ${excludeList}
 
 Create a multiple choice question that:
-1. Tests real understanding of ${topic}, not just memorization
+1. ${tier.questionStyle}
 2. Has exactly 4 choices with ONLY ONE correct answer
-3. Is appropriate for difficulty level ${difficulty}
-4. Has plausible but clearly wrong distractors
-5. Is educational and helps the learner understand ${topic} better
+3. Is appropriate for difficulty level ${difficulty} AND the student's age group
+4. Is educational and helps the learner understand ${topic} better
+5. Uses Hong Kong-relevant examples where possible
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
@@ -372,7 +453,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     {"text": "Plausible wrong answer 2", "correct": false},
     {"text": "Plausible wrong answer 3", "correct": false}
   ],
-  "explanation": "Brief explanation of why the correct answer is right (1-2 sentences)"
+  "explanation": "Brief explanation of why the correct answer is right (1-2 sentences, age-appropriate language)"
 }`;
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
@@ -508,5 +589,6 @@ module.exports = {
   generateStoryLesson,
   generateStoryQuestion,
   generateStudySchedule,
-  generateStudyTips
+  generateStudyTips,
+  TIER_PROMPT_CONFIG  // Export for testing/reference
 };

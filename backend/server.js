@@ -60,7 +60,10 @@ app.use('/api/tasks', require('./routes/tasks'));
 
 app.use('/api/tutor', require('./routes/tutor'));
 
-app.use('/api/ai/story',require('./routes/aiStory'));
+app.use('/api/ai/story', require('./routes/aiStory'));
+
+app.use('/api/schedule', require('./routes/schedule'));
+
 // ============================================
 // NEW: ROOT API ENDPOINT (FIXES YOUR /api ISSUE)
 // ============================================
