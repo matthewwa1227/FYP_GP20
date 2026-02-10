@@ -1,47 +1,68 @@
 // ============================================
 // StudyQuest - Gamification System
 // FYP GP20 - XP, Levels, and Rewards
+// ✅ UPDATED: 1 XP per 10 seconds, 10 second minimum
 // ============================================
 
 /**
- * XP Calculation Rules:
- * - Base: 10 XP per minute studied
- * - Pomodoro Bonus: +50 XP for 25+ minute sessions
- * - Deep Work Bonus: +150 XP for 60+ minute sessions
- * - Marathon Bonus: +300 XP for 120+ minute sessions
+ * XP Calculation Rules (UPDATED):
+ * - Base: 1 XP per 10 seconds (6 XP per minute)
+ * - 5 min Bonus: +5 XP for 300+ second sessions
+ * - 15 min Bonus: +15 XP for 900+ second sessions
+ * - Pomodoro Bonus: +50 XP for 1500+ second (25+ min) sessions
+ * - Deep Work Bonus: +150 XP for 3600+ second (60+ min) sessions
+ * - Marathon Bonus: +300 XP for 7200+ second (120+ min) sessions
+ * 
+ * @param {number} durationSeconds - Duration in SECONDS
  */
-function calculateXP(durationMinutes) {
-    let xp = durationMinutes * 10; // Base XP
+function calculateXP(durationSeconds) {
+    // Base XP: 1 XP per 10 seconds
+    let xp = Math.floor(durationSeconds / 10);
     
     // Bonus XP for focused sessions
-    if (durationMinutes >= 120) {
+    if (durationSeconds >= 7200) {        // 120+ minutes
         xp += 300; // Marathon session
-    } else if (durationMinutes >= 60) {
+    } else if (durationSeconds >= 3600) { // 60+ minutes
         xp += 150; // Deep work session
-    } else if (durationMinutes >= 25) {
-        xp += 50; // Pomodoro session
+    } else if (durationSeconds >= 1500) { // 25+ minutes
+        xp += 50;  // Pomodoro session
+    } else if (durationSeconds >= 900) {  // 15+ minutes
+        xp += 15;  // Good focus
+    } else if (durationSeconds >= 300) {  // 5+ minutes
+        xp += 5;   // Quick study
     }
+    
+    console.log(`💰 XP Calculation: ${durationSeconds}s (${Math.floor(durationSeconds/60)}m) → ${xp} XP`);
     
     return xp;
 }
 
 /**
- * Points Calculation Rules:
- * - Base: 1 point per minute
- * - Pomodoro Bonus: +10 points for 25+ minute sessions
- * - Deep Work Bonus: +20 points for 60+ minute sessions
- * - Marathon Bonus: +50 points for 120+ minute sessions
+ * Points Calculation Rules (UPDATED):
+ * - Base: 1 point per 10 seconds
+ * - 5 min Bonus: +2 points for 300+ second sessions
+ * - 15 min Bonus: +5 points for 900+ second sessions
+ * - Pomodoro Bonus: +10 points for 1500+ second (25+ min) sessions
+ * - Deep Work Bonus: +20 points for 3600+ second (60+ min) sessions
+ * - Marathon Bonus: +50 points for 7200+ second (120+ min) sessions
+ * 
+ * @param {number} durationSeconds - Duration in SECONDS
  */
-function calculatePoints(durationMinutes) {
-    let points = durationMinutes; // Base points
+function calculatePoints(durationSeconds) {
+    // Base points: 1 point per 10 seconds
+    let points = Math.floor(durationSeconds / 10);
     
     // Bonus points for focused sessions
-    if (durationMinutes >= 120) {
+    if (durationSeconds >= 7200) {        // 120+ minutes
         points += 50;
-    } else if (durationMinutes >= 60) {
+    } else if (durationSeconds >= 3600) { // 60+ minutes
         points += 20;
-    } else if (durationMinutes >= 25) {
+    } else if (durationSeconds >= 1500) { // 25+ minutes
         points += 10;
+    } else if (durationSeconds >= 900) {  // 15+ minutes
+        points += 5;
+    } else if (durationSeconds >= 300) {  // 5+ minutes
+        points += 2;
     }
     
     return points;
@@ -207,16 +228,25 @@ function checkLevelUp(oldXP, newXP) {
 
 /**
  * Generate session summary for frontend
+ * @param {object} session - Session object with duration in seconds
+ * @param {object} oldStats - Previous student stats
+ * @param {object} newStats - Updated student stats
  */
 function generateSessionSummary(session, oldStats, newStats) {
     const xpGained = newStats.xp - oldStats.xp;
-    const pointsGained = newStats.total_points - oldStats.total_points;
+    const pointsGained = (newStats.total_points || 0) - (oldStats.total_points || 0);
     const levelInfo = checkLevelUp(oldStats.xp, newStats.xp);
     const streakIncreased = newStats.current_streak > oldStats.current_streak;
     
+    // Handle duration (could be in seconds or minutes depending on source)
+    const durationSeconds = session.duration_seconds || session.duration || 0;
+    const durationMinutes = session.duration_minutes || Math.floor(durationSeconds / 60);
+    
     return {
         session: {
-            duration: session.duration_minutes,
+            durationSeconds: durationSeconds,
+            durationMinutes: durationMinutes,
+            durationFormatted: formatDuration(durationSeconds),
             subject: session.subject,
             topic: session.topic
         },
@@ -241,66 +271,118 @@ function generateSessionSummary(session, oldStats, newStats) {
 
 /**
  * Calculate session rewards (called when ending a session)
+ * @param {number} durationSeconds - Duration in SECONDS
  */
-function calculateSessionRewards(durationMinutes) {
+function calculateSessionRewards(durationSeconds) {
     return {
-        xp: calculateXP(durationMinutes),
-        points: calculatePoints(durationMinutes),
-        duration: durationMinutes
+        xp: calculateXP(durationSeconds),
+        points: calculatePoints(durationSeconds),
+        durationSeconds: durationSeconds,
+        durationMinutes: Math.floor(durationSeconds / 60)
     };
 }
 
 /**
  * Get motivational message based on session duration
+ * @param {number} durationSeconds - Duration in SECONDS
  */
-function getMotivationalMessage(durationMinutes) {
-    if (durationMinutes >= 120) {
+function getMotivationalMessage(durationSeconds) {
+    if (durationSeconds >= 7200) { // 120+ minutes
         return {
             title: "🏆 Marathon Master!",
             message: "Incredible dedication! 2+ hours of focused study!",
             emoji: "🔥"
         };
-    } else if (durationMinutes >= 60) {
+    } else if (durationSeconds >= 3600) { // 60+ minutes
         return {
             title: "💪 Deep Work Champion!",
             message: "Amazing focus! You crushed that hour!",
             emoji: "⭐"
         };
-    } else if (durationMinutes >= 25) {
+    } else if (durationSeconds >= 1500) { // 25+ minutes
         return {
             title: "🍅 Pomodoro Pro!",
             message: "Perfect focus session! Keep it up!",
             emoji: "✨"
         };
-    } else if (durationMinutes >= 10) {
+    } else if (durationSeconds >= 600) { // 10+ minutes
         return {
             title: "👍 Good Start!",
             message: "Every minute counts! Keep building momentum!",
             emoji: "🎯"
         };
-    } else {
+    } else if (durationSeconds >= 60) { // 1+ minutes
         return {
-            title: "🌱 Baby Steps!",
-            message: "Great start! Try for 25 minutes next time!",
+            title: "🌱 Quick Study!",
+            message: "Great start! Try for longer next time!",
             emoji: "💚"
+        };
+    } else { // Less than 1 minute
+        return {
+            title: "⚡ Speed Run!",
+            message: "That was fast! Every second counts!",
+            emoji: "⚡"
         };
     }
 }
 
 /**
- * Calculate daily goal progress
+ * Format duration from seconds to readable string
+ * @param {number} seconds - Duration in seconds
  */
-function calculateDailyGoalProgress(todayMinutes, goalMinutes = 60) {
-    const percentage = Math.min(100, Math.round((todayMinutes / goalMinutes) * 100));
-    const remaining = Math.max(0, goalMinutes - todayMinutes);
+function formatDuration(seconds) {
+    if (seconds < 60) {
+        return `${seconds} sec`;
+    } else if (seconds < 3600) {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return secs > 0 ? `${mins} min ${secs} sec` : `${mins} min`;
+    } else {
+        const hours = Math.floor(seconds / 3600);
+        const mins = Math.floor((seconds % 3600) / 60);
+        return mins > 0 ? `${hours} hr ${mins} min` : `${hours} hr`;
+    }
+}
+
+/**
+ * Calculate daily goal progress
+ * @param {number} todaySeconds - Today's study time in SECONDS
+ * @param {number} goalSeconds - Daily goal in SECONDS (default 1 hour = 3600 seconds)
+ */
+function calculateDailyGoalProgress(todaySeconds, goalSeconds = 3600) {
+    const percentage = Math.min(100, Math.round((todaySeconds / goalSeconds) * 100));
+    const remaining = Math.max(0, goalSeconds - todaySeconds);
     
     return {
-        completed: todayMinutes >= goalMinutes,
+        completed: todaySeconds >= goalSeconds,
         percentage,
-        minutesStudied: todayMinutes,
-        minutesRemaining: remaining,
-        goalMinutes
+        secondsStudied: todaySeconds,
+        minutesStudied: Math.floor(todaySeconds / 60),
+        secondsRemaining: remaining,
+        minutesRemaining: Math.floor(remaining / 60),
+        goalSeconds,
+        goalMinutes: Math.floor(goalSeconds / 60)
     };
+}
+
+/**
+ * Minimum session duration in seconds
+ */
+const MIN_SESSION_DURATION_SECONDS = 10;
+
+/**
+ * Check if session meets minimum duration requirement
+ * @param {number} durationSeconds - Duration in seconds
+ */
+function isValidSessionDuration(durationSeconds) {
+    return durationSeconds >= MIN_SESSION_DURATION_SECONDS;
+}
+
+/**
+ * Get minimum duration error message
+ */
+function getMinDurationError() {
+    return `Session too short. Please study for at least ${MIN_SESSION_DURATION_SECONDS} seconds.`;
 }
 
 module.exports = {
@@ -326,6 +408,12 @@ module.exports = {
     
     // Daily goals
     calculateDailyGoalProgress,
+    
+    // Duration helpers
+    formatDuration,
+    isValidSessionDuration,
+    getMinDurationError,
+    MIN_SESSION_DURATION_SECONDS,
     
     // Helpers
     isSameDay,

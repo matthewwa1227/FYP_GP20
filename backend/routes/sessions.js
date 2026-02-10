@@ -77,6 +77,7 @@ router.post('/start', authenticateToken, async (req, res) => {
 // ============================================
 // POST /api/sessions/:sessionId/end
 // End an active study session
+// ✅ UPDATED: Now accepts duration in SECONDS
 // ============================================
 router.post('/:sessionId/end', authenticateToken, async (req, res) => {
     const client = await pool.connect();
@@ -85,7 +86,7 @@ router.post('/:sessionId/end', authenticateToken, async (req, res) => {
         await client.query('BEGIN');
         
         const { sessionId } = req.params;
-        const { notes, duration } = req.body;
+        const { notes, duration } = req.body; // duration is now in SECONDS
         const studentId = req.student.id;
         
         // Get the active session
@@ -105,29 +106,32 @@ router.post('/:sessionId/end', authenticateToken, async (req, res) => {
         
         const session = sessionResult.rows[0];
         
-        // ✅ Calculate duration in minutes
-        let durationMinutes;
+        // ✅ UPDATED: Calculate duration in SECONDS
+        let durationSeconds;
         if (duration !== undefined && duration !== null) {
-            durationMinutes = Math.floor(duration);
+            durationSeconds = Math.floor(duration);
         } else {
             const startedAt = new Date(session.started_at);
             const endedAt = new Date();
-            durationMinutes = Math.floor((endedAt - startedAt) / (1000 * 60));
+            durationSeconds = Math.floor((endedAt - startedAt) / 1000);
         }
         
-        // ✅ Check minimum duration
-        if (durationMinutes < 1) {
+        // ✅ UPDATED: Check minimum duration (10 seconds instead of 1 minute)
+        if (durationSeconds < 10) {
             await client.query('ROLLBACK');
             return res.status(400).json({
                 success: false,
-                message: 'Session too short. Please study for at least 1 minute.'
+                message: 'Session too short. Please study for at least 10 seconds.'
             });
         }
         
-        // ✅ Calculate XP using the imported calculateXP function
-        const xpGained = calculateXP(durationMinutes);
+        // ✅ UPDATED: Calculate XP (1 XP per 10 seconds)
+        const xpGained = calculateXP(durationSeconds);
         
-        console.log(`📊 Session rewards: ${durationMinutes} min = ${xpGained} XP`);
+        // Convert seconds to minutes for storage (keep backward compatibility)
+        const durationMinutes = Math.floor(durationSeconds / 60);
+        
+        console.log(`📊 Session rewards: ${durationSeconds} sec (${durationMinutes} min) = ${xpGained} XP`);
         
         // Get current student stats
         const oldStatsResult = await client.query(
@@ -142,7 +146,7 @@ router.post('/:sessionId/end', authenticateToken, async (req, res) => {
             oldStats.current_streak || 0
         );
         
-        // Update session record
+        // Update session record (store minutes for backward compatibility)
         await client.query(
             `UPDATE study_sessions 
             SET ended_at = NOW(), 
@@ -198,13 +202,14 @@ router.post('/:sessionId/end', authenticateToken, async (req, res) => {
         
         await client.query('COMMIT');
         
-        // ✅ Generate motivational message based on duration
+        // ✅ UPDATED: Generate motivational message based on duration (in seconds)
         const motivation = {
-            title: durationMinutes >= 60 ? '🌟 Amazing Focus!' :
-                   durationMinutes >= 30 ? '💪 Great Session!' :
-                   durationMinutes >= 15 ? '✨ Good Work!' :
-                   '📚 Session Complete!',
-            message: `You studied for ${durationMinutes} minutes and earned ${xpGained} XP!`
+            title: durationSeconds >= 3600 ? '🌟 Amazing Focus!' :
+                   durationSeconds >= 1800 ? '💪 Great Session!' :
+                   durationSeconds >= 900 ? '✨ Good Work!' :
+                   durationSeconds >= 60 ? '📚 Nice Start!' :
+                   '⚡ Quick Study!',
+            message: `You studied for ${formatDuration(durationSeconds)} and earned ${xpGained} XP!`
         };
         
         // Generate session summary
@@ -249,6 +254,21 @@ router.post('/:sessionId/end', authenticateToken, async (req, res) => {
     }
 });
 
+// ✅ NEW: Helper function to format duration
+function formatDuration(seconds) {
+    if (seconds < 60) {
+        return `${seconds} seconds`;
+    } else if (seconds < 3600) {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return secs > 0 ? `${mins} min ${secs} sec` : `${mins} minutes`;
+    } else {
+        const hours = Math.floor(seconds / 3600);
+        const mins = Math.floor((seconds % 3600) / 60);
+        return mins > 0 ? `${hours} hr ${mins} min` : `${hours} hours`;
+    }
+}
+
 // ============================================
 // GET /api/sessions/active
 // Get current active session if any
@@ -275,7 +295,7 @@ router.get('/active', authenticateToken, async (req, res) => {
         const session = result.rows[0];
         const startedAt = new Date(session.started_at);
         const now = new Date();
-        const currentDuration = Math.floor((now - startedAt) / (1000 * 60));
+        const currentDuration = Math.floor((now - startedAt) / (1000 * 60)); // Still in minutes for display
         
         res.json({
             success: true,
@@ -377,7 +397,6 @@ router.get('/stats', authenticateToken, async (req, res) => {
         const student = statsResult.rows[0];
         
         // Get subject breakdown
-        // ✅ FIXED: Changed duration_minutes to duration
         const subjectResult = await pool.query(
             `SELECT 
                 subject,
@@ -392,7 +411,6 @@ router.get('/stats', authenticateToken, async (req, res) => {
         );
         
         // Get recent activity (last 7 days)
-        // ✅ FIXED: Changed duration_minutes to duration
         const activityResult = await pool.query(
             `SELECT 
                 DATE(started_at) as study_date,

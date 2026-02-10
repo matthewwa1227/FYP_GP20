@@ -164,6 +164,39 @@ router.post('/lesson', authenticateToken, checkScheduleLimits, async (req, res) 
   }
 });
 
+// TEMPORARY TEST ROUTE - Add to aiStory.js
+router.get('/test-schedule-block/:type', authenticateToken, (req, res) => {
+  const type = req.params.type;
+  
+  if (type === 'rest') {
+    return res.status(403).json({
+      code: 'REST_DAY',
+      error: 'REST_DAY',
+      type: 'REST_DAY',
+      message: 'TEST: Today is a rest day'
+    });
+  }
+  if (type === 'time') {
+    return res.status(403).json({
+      code: 'TIME_LIMIT_REACHED',
+      error: 'TIME_LIMIT_REACHED', 
+      type: 'TIME_LIMIT_REACHED',
+      message: 'TEST: Time limit reached',
+      remaining: 0
+    });
+  }
+  if (type === 'onboarding') {
+    return res.status(403).json({
+      code: 'ONBOARDING_REQUIRED',
+      error: 'ONBOARDING_REQUIRED',
+      type: 'ONBOARDING_REQUIRED',
+      message: 'TEST: Onboarding required'
+    });
+  }
+  
+  res.json({ message: 'No block', type });
+});
+
 // ============================================
 // POST /question — Generate a quiz question
 // ============================================

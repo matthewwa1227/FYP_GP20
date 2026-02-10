@@ -1,8 +1,5 @@
-// middleware/scheduleGuard.js
-
 const db = require('../db/connection');
 
-// Tier config (centralized)
 const TIER_CONFIG = {
   'P1-P3': { dailyMinutes: 15, weeklyDays: 4, masteryGate: 65, chaptersDefault: 4 },
   'P4-P6': { dailyMinutes: 25, weeklyDays: 5, masteryGate: 70, chaptersDefault: 4 },
@@ -10,18 +7,21 @@ const TIER_CONFIG = {
   'S4-S6': { dailyMinutes: 60, weeklyDays: 6, masteryGate: 75, chaptersDefault: 6 }
 };
 
-/**
- * Checks that the student:
- *  1. Has completed onboarding (form_level set)
- *  2. Has not exceeded their daily time limit
- * 
- * Attaches req.scheduleInfo with time/tier data for downstream use.
- */
 const checkScheduleLimits = async (req, res, next) => {
   try {
     const userId = req.user.id;
 
-    // Single query: get student tier info + today's total usage
+    // Check if today is a rest day
+    const restDayCheck = await db.query(`
+      SELECT is_rest_day 
+      FROM student_schedules 
+      WHERE student_id = $1 
+      AND day_of_week = EXTRACT(DOW FROM CURRENT_DATE)
+    `, [userId]);
+
+    const isRestDay = restDayCheck.rows.length > 0 && restDayCheck.rows[0].is_rest_day;
+
+    // Get student info + today's usage
     const result = await db.query(`
       SELECT 
         s.form_level,
@@ -33,7 +33,7 @@ const checkScheduleLimits = async (req, res, next) => {
       LEFT JOIN daily_session_log dsl 
         ON dsl.student_id = s.id 
         AND dsl.session_date = CURRENT_DATE
-        AND dsl.is_rest_day = FALSE
+        AND dsl.session_ended_at IS NOT NULL
       WHERE s.id = $1
       GROUP BY s.id
     `, [userId]);
@@ -52,12 +52,24 @@ const checkScheduleLimits = async (req, res, next) => {
       return res.status(403).json({
         success: false,
         code: 'ONBOARDING_REQUIRED',
-        message: 'Please complete onboarding first by setting your form level.',
-        action: 'PATCH /api/auth/onboarding'
+        error: 'ONBOARDING_REQUIRED',
+        type: 'ONBOARDING_REQUIRED',
+        message: 'Please complete onboarding first by setting your form level.'
       });
     }
 
-    const dailyLimit = student.daily_time_limit_minutes;
+    // Check rest day
+    if (isRestDay) {
+      return res.status(403).json({
+        success: false,
+        code: 'REST_DAY',
+        error: 'REST_DAY',
+        type: 'REST_DAY',
+        message: 'Today is your scheduled rest day. Take a break and come back tomorrow!'
+      });
+    }
+
+    const dailyLimit = student.daily_time_limit_minutes || TIER_CONFIG[student.age_tier]?.dailyMinutes || 25;
     const todayUsed = student.today_minutes;
     const remaining = Math.max(0, dailyLimit - todayUsed);
 
@@ -66,16 +78,14 @@ const checkScheduleLimits = async (req, res, next) => {
       return res.status(403).json({
         success: false,
         code: 'TIME_LIMIT_REACHED',
+        error: 'TIME_LIMIT_REACHED',
+        type: 'TIME_LIMIT_REACHED',
         message: `You've used all ${dailyLimit} minutes for today. Come back tomorrow!`,
-        data: {
-          dailyLimit,
-          todayUsed,
-          remaining: 0
-        }
+        remaining: 0,
+        remainingMinutes: 0
       });
     }
 
-    // Attach schedule info for downstream routes
     req.scheduleInfo = {
       formLevel: student.form_level,
       ageTier: student.age_tier,
@@ -83,7 +93,7 @@ const checkScheduleLimits = async (req, res, next) => {
       todayUsed,
       remaining,
       tierConfig: TIER_CONFIG[student.age_tier] || TIER_CONFIG['P4-P6'],
-      shouldWarnSoon: remaining <= 5  // 5 minutes warning
+      shouldWarnSoon: remaining <= 5
     };
 
     next();
@@ -97,10 +107,6 @@ const checkScheduleLimits = async (req, res, next) => {
   }
 };
 
-/**
- * Lighter version: just checks onboarding, no time limit enforcement.
- * Use for read-only schedule routes.
- */
 const requireOnboarding = async (req, res, next) => {
   try {
     const result = await db.query(
@@ -118,6 +124,8 @@ const requireOnboarding = async (req, res, next) => {
       return res.status(403).json({
         success: false,
         code: 'ONBOARDING_REQUIRED',
+        error: 'ONBOARDING_REQUIRED',
+        type: 'ONBOARDING_REQUIRED',
         message: 'Please set your form level first.'
       });
     }

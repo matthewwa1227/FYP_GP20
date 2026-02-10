@@ -321,7 +321,6 @@ router.get('/achievements', authenticateToken, async (req, res) => {
         a.icon,
         a.category,
         a.points_reward,
-        a.xp_reward,
         CASE WHEN sa.id IS NOT NULL THEN true ELSE false END as unlocked,
         sa.unlocked_at
        FROM achievements a
