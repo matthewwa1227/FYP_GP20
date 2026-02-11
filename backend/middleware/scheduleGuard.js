@@ -9,7 +9,17 @@ const TIER_CONFIG = {
 
 const checkScheduleLimits = async (req, res, next) => {
   try {
-    const userId = req.user.id;
+    // Support both req.user and req.student for compatibility
+    const userId = req.user?.id || req.student?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Not authenticated'
+      });
+    }
+
+    console.log('🛡️ Schedule guard checking user:', userId);
 
     // Check if today is a rest day
     const restDayCheck = await db.query(`
@@ -47,8 +57,16 @@ const checkScheduleLimits = async (req, res, next) => {
 
     const student = result.rows[0];
 
+    console.log('🛡️ Student data:', {
+      formLevel: student.form_level,
+      onboardingCompleted: student.onboarding_completed,
+      isRestDay,
+      todayMinutes: student.today_minutes
+    });
+
     // Check onboarding
     if (!student.onboarding_completed || !student.form_level) {
+      console.log('🚫 Onboarding required');
       return res.status(403).json({
         success: false,
         code: 'ONBOARDING_REQUIRED',
@@ -60,6 +78,7 @@ const checkScheduleLimits = async (req, res, next) => {
 
     // Check rest day
     if (isRestDay) {
+      console.log('🚫 Rest day');
       return res.status(403).json({
         success: false,
         code: 'REST_DAY',
@@ -75,6 +94,7 @@ const checkScheduleLimits = async (req, res, next) => {
 
     // Check time limit
     if (remaining <= 0) {
+      console.log('🚫 Time limit reached');
       return res.status(403).json({
         success: false,
         code: 'TIME_LIMIT_REACHED',
@@ -86,6 +106,7 @@ const checkScheduleLimits = async (req, res, next) => {
       });
     }
 
+    // Attach schedule info to request for use in route handlers
     req.scheduleInfo = {
       formLevel: student.form_level,
       ageTier: student.age_tier,
@@ -96,6 +117,7 @@ const checkScheduleLimits = async (req, res, next) => {
       shouldWarnSoon: remaining <= 5
     };
 
+    console.log('✅ Schedule check passed, remaining minutes:', remaining);
     next();
 
   } catch (error) {
@@ -109,9 +131,18 @@ const checkScheduleLimits = async (req, res, next) => {
 
 const requireOnboarding = async (req, res, next) => {
   try {
+    const userId = req.user?.id || req.student?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Not authenticated'
+      });
+    }
+
     const result = await db.query(
       'SELECT form_level, age_tier, onboarding_completed FROM students WHERE id = $1',
-      [req.user.id]
+      [userId]
     );
 
     if (result.rows.length === 0) {

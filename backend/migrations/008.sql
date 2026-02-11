@@ -39,3 +39,13 @@ ON CONFLICT DO NOTHING;
 INSERT INTO student_schedules (student_id, day_of_week, is_rest_day)
 SELECT id, 6, FALSE FROM students WHERE role = 'student'
 ON CONFLICT DO NOTHING;
+
+-- Add onboarding and schedule columns to students table
+ALTER TABLE students 
+ADD COLUMN IF NOT EXISTS form_level VARCHAR(10),
+ADD COLUMN IF NOT EXISTS age_tier VARCHAR(10) DEFAULT 'P4-P6',
+ADD COLUMN IF NOT EXISTS daily_time_limit_minutes INTEGER DEFAULT 25,
+ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT FALSE;
+
+-- Optional: Update existing students to mark them as needing onboarding
+-- UPDATE students SET onboarding_completed = FALSE WHERE form_level IS NULL;

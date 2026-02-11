@@ -8,7 +8,15 @@ const { authenticateToken } = require('../middleware/auth');
 // ============================================
 router.get('/profile', authenticateToken, async (req, res) => {
   try {
-    const studentId = req.student.id;
+    // Support both req.student and req.user for compatibility
+    const studentId = req.student?.id || req.user?.id;
+
+    if (!studentId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Not authenticated'
+      });
+    }
 
     const result = await query(
       `SELECT 
@@ -25,6 +33,10 @@ router.get('/profile', authenticateToken, async (req, res) => {
         longest_streak, 
         COALESCE(total_study_time, 0) as total_study_time,
         COALESCE(total_sessions, 0) as total_sessions,
+        form_level,
+        age_tier,
+        daily_time_limit_minutes,
+        onboarding_completed,
         created_at
        FROM students 
        WHERE id = $1`,
@@ -59,7 +71,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
     res.json({
       success: true,
       profile,
-      student: profile // For backwards compatibility
+      student: profile
     });
 
   } catch (error) {
@@ -77,11 +89,34 @@ router.get('/profile', authenticateToken, async (req, res) => {
 // ============================================
 router.put('/profile', authenticateToken, async (req, res) => {
   try {
-    const studentId = req.student.id;
-    const { username, email, full_name, bio, avatar_url } = req.body;
+    // Support both req.student and req.user for compatibility
+    const studentId = req.student?.id || req.user?.id;
+
+    if (!studentId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Not authenticated'
+      });
+    }
+
+    const { 
+      username, 
+      email, 
+      full_name, 
+      bio, 
+      avatar_url, 
+      form_level, 
+      onboarding_completed 
+    } = req.body;
+
+    console.log('📝 Update profile request:', { studentId, form_level, onboarding_completed });
 
     // Validate input - at least one field required
-    if (!username && !email && !full_name && bio === undefined && !avatar_url) {
+    const hasUpdate = username || email || full_name !== undefined || 
+                      bio !== undefined || avatar_url !== undefined || 
+                      form_level || onboarding_completed !== undefined;
+
+    if (!hasUpdate) {
       return res.status(400).json({
         success: false,
         message: 'At least one field is required to update'
@@ -106,6 +141,37 @@ router.put('/profile', authenticateToken, async (req, res) => {
           message: 'Invalid avatar URL'
         });
       }
+    }
+
+    // Determine age_tier and daily_time_limit based on form_level
+    let age_tier = null;
+    let daily_time_limit = null;
+
+    if (form_level) {
+      const validLevels = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6'];
+      if (!validLevels.includes(form_level)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid form level. Must be P1-P6 or S1-S6'
+        });
+      }
+
+      // Determine age tier and daily limits
+      if (['P1', 'P2', 'P3'].includes(form_level)) {
+        age_tier = 'P1-P3';
+        daily_time_limit = 15;
+      } else if (['P4', 'P5', 'P6'].includes(form_level)) {
+        age_tier = 'P4-P6';
+        daily_time_limit = 25;
+      } else if (['S1', 'S2', 'S3'].includes(form_level)) {
+        age_tier = 'S1-S3';
+        daily_time_limit = 40;
+      } else if (['S4', 'S5', 'S6'].includes(form_level)) {
+        age_tier = 'S4-S6';
+        daily_time_limit = 60;
+      }
+
+      console.log('📊 Calculated tier:', { form_level, age_tier, daily_time_limit });
     }
 
     // Build dynamic update query
@@ -143,16 +209,65 @@ router.put('/profile', authenticateToken, async (req, res) => {
       paramCount++;
     }
 
+    // Handle form_level and related fields
+    if (form_level) {
+      updateFields.push(`form_level = $${paramCount}`);
+      values.push(form_level);
+      paramCount++;
+
+      updateFields.push(`age_tier = $${paramCount}`);
+      values.push(age_tier);
+      paramCount++;
+
+      updateFields.push(`daily_time_limit_minutes = $${paramCount}`);
+      values.push(daily_time_limit);
+      paramCount++;
+    }
+
+    // Handle onboarding_completed
+    if (onboarding_completed !== undefined) {
+      updateFields.push(`onboarding_completed = $${paramCount}`);
+      values.push(onboarding_completed);
+      paramCount++;
+    }
+
+    // Add student ID as last parameter
     values.push(studentId);
 
     const updateQuery = `
       UPDATE students 
       SET ${updateFields.join(', ')}
       WHERE id = $${paramCount}
-      RETURNING id, username, email, full_name, bio, avatar_url, level, xp, current_streak, longest_streak, total_study_time
+      RETURNING 
+        id, 
+        username, 
+        email, 
+        full_name, 
+        bio, 
+        avatar_url, 
+        level, 
+        xp, 
+        current_streak, 
+        longest_streak, 
+        total_study_time,
+        form_level, 
+        age_tier, 
+        daily_time_limit_minutes, 
+        onboarding_completed
     `;
 
+    console.log('📝 Executing query with values:', values);
+
     const result = await query(updateQuery, values);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    console.log('✅ Profile updated successfully:', result.rows[0]);
 
     res.json({
       success: true,
@@ -162,8 +277,8 @@ router.put('/profile', authenticateToken, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Update profile error:', error);
-    
+    console.error('❌ Update profile error:', error);
+
     // Handle unique constraint violations
     if (error.code === '23505') {
       return res.status(400).json({
@@ -185,7 +300,14 @@ router.put('/profile', authenticateToken, async (req, res) => {
 // ============================================
 router.get('/stats', authenticateToken, async (req, res) => {
   try {
-    const studentId = req.student.id;
+    const studentId = req.student?.id || req.user?.id;
+
+    if (!studentId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Not authenticated'
+      });
+    }
 
     // Get student basic info with all fields
     const studentQuery = await query(
@@ -203,6 +325,10 @@ router.get('/stats', authenticateToken, async (req, res) => {
         longest_streak, 
         COALESCE(total_study_time, 0) as total_study_time,
         COALESCE(total_sessions, 0) as total_sessions,
+        form_level,
+        age_tier,
+        daily_time_limit_minutes,
+        onboarding_completed,
         created_at
        FROM students 
        WHERE id = $1`,
@@ -310,7 +436,14 @@ router.get('/stats', authenticateToken, async (req, res) => {
 // ============================================
 router.get('/achievements', authenticateToken, async (req, res) => {
   try {
-    const studentId = req.student.id;
+    const studentId = req.student?.id || req.user?.id;
+
+    if (!studentId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Not authenticated'
+      });
+    }
 
     // Get all achievements with unlock status
     const achievementsQuery = await query(
@@ -339,6 +472,87 @@ router.get('/achievements', authenticateToken, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to retrieve achievements',
+      error: error.message
+    });
+  }
+});
+
+// ============================================
+// GET /api/student/schedule-status - Get current schedule status
+// ============================================
+router.get('/schedule-status', authenticateToken, async (req, res) => {
+  try {
+    const studentId = req.student?.id || req.user?.id;
+
+    if (!studentId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Not authenticated'
+      });
+    }
+
+    // Get student info
+    const studentResult = await query(`
+      SELECT 
+        form_level,
+        age_tier,
+        daily_time_limit_minutes,
+        onboarding_completed
+      FROM students
+      WHERE id = $1
+    `, [studentId]);
+
+    if (studentResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    const student = studentResult.rows[0];
+
+    // Check if today is a rest day
+    const restDayResult = await query(`
+      SELECT is_rest_day 
+      FROM student_schedules 
+      WHERE student_id = $1 
+      AND day_of_week = EXTRACT(DOW FROM CURRENT_DATE)
+    `, [studentId]);
+
+    const isRestDay = restDayResult.rows.length > 0 && restDayResult.rows[0].is_rest_day;
+
+    // Get today's usage
+    const usageResult = await query(`
+      SELECT COALESCE(SUM(actual_minutes), 0)::int AS today_minutes
+      FROM daily_session_log 
+      WHERE student_id = $1 
+      AND session_date = CURRENT_DATE
+      AND session_ended_at IS NOT NULL
+    `, [studentId]);
+
+    const todayUsed = usageResult.rows[0]?.today_minutes || 0;
+    const dailyLimit = student.daily_time_limit_minutes || 25;
+    const remaining = Math.max(0, dailyLimit - todayUsed);
+
+    res.json({
+      success: true,
+      status: {
+        onboardingCompleted: student.onboarding_completed,
+        formLevel: student.form_level,
+        ageTier: student.age_tier,
+        dailyLimit,
+        todayUsed,
+        remaining,
+        isRestDay,
+        canStudy: student.onboarding_completed && !isRestDay && remaining > 0
+      }
+    });
+
+  } catch (error) {
+    console.error('Get schedule status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get schedule status',
       error: error.message
     });
   }
