@@ -17,35 +17,35 @@ const kimi = new OpenAI({
 const TIER_PROMPT_CONFIG = {
   'P1-P3': {
     label: 'Primary 1-3 (ages 6-8)',
-    language: 'Use very simple English with short sentences (max 10-12 words each). Use basic vocabulary only. Be extremely encouraging and gentle.',
-    contentDepth: 'Introduce ONE simple idea at a time. Use concrete, everyday examples (toys, food, animals, family). Avoid abstract reasoning.',
-    questionStyle: 'Ask simple recall or identification questions. Wrong answers should be obviously wrong. Keep all answer text under 8 words each.',
-    storyTone: 'Magical, friendly, and playful. Use cute characters and bright imagery. Lots of encouragement and celebration.',
-    exampleContext: 'Hong Kong primary school life — MTR rides, dim sum, Ocean Park, school uniforms, red packets'
+    language: 'Use very simple English. Short sentences only (5-8 words). Basic words only.',
+    contentDepth: 'One simple idea at a time. Use toys, food, animals as examples.',
+    questionStyle: 'Simple questions with obvious answers. Keep answers under 5 words.',
+    storyTone: 'Fun, magical, and friendly. Lots of praise!',
+    exampleContext: 'Hong Kong primary school — MTR, dim sum, Ocean Park'
   },
   'P4-P6': {
     label: 'Primary 4-6 (ages 9-11)',
-    language: 'Use clear, simple English with moderate sentence length. Introduce subject-specific vocabulary with brief definitions.',
-    contentDepth: 'Explain concepts with relatable everyday examples. Include one simple analogy per lesson. Build on foundational knowledge.',
-    questionStyle: 'Test understanding and simple application. Distractors should be plausible but distinguishable. Keep answers under 15 words each.',
-    storyTone: 'Adventurous and exploratory. The player discovers knowledge through quests. Encourage curiosity and teamwork.',
-    exampleContext: 'Hong Kong school projects, local geography (Victoria Harbour, Lion Rock), festivals, public transport systems'
+    language: 'Use clear, simple English. Short sentences. Easy words.',
+    contentDepth: 'Explain with everyday examples. One simple comparison.',
+    questionStyle: 'Test understanding. Wrong answers are clearly wrong.',
+    storyTone: 'Adventurous and fun. You are on a quest!',
+    exampleContext: 'Hong Kong — Victoria Harbour, festivals, school projects'
   },
   'S1-S3': {
     label: 'Secondary 1-3 (ages 12-14)',
-    language: 'Use standard academic English. Introduce proper terminology with clear explanations. Moderate complexity.',
-    contentDepth: 'Explain principles and their connections. Include cause-and-effect reasoning. Use real-world applications relevant to Hong Kong.',
-    questionStyle: 'Test application and analysis. Distractors should require careful thinking to eliminate. Include "why" and "how" questions.',
-    storyTone: 'Mystery and investigation themed. The player solves problems using knowledge. Respectful and intellectually engaging.',
-    exampleContext: 'Hong Kong current affairs, local industries, environmental issues, technology in daily life, STEM applications'
+    language: 'Use normal English. Some school words are OK.',
+    contentDepth: 'Explain how things work. Connect ideas together.',
+    questionStyle: 'Test thinking. Ask "why" and "how" questions.',
+    storyTone: 'Mystery solving. Use knowledge to win!',
+    exampleContext: 'Hong Kong life — technology, environment, daily issues'
   },
   'S4-S6': {
-    label: 'Secondary 4-6 (ages 15-17, DSE preparation)',
-    language: 'Use academic and technical language appropriate for HKDSE level. Precise terminology expected.',
-    contentDepth: 'Cover advanced concepts with depth. Include multiple perspectives, edge cases, and exam-relevant patterns. Reference HKDSE marking schemes where applicable.',
-    questionStyle: 'DSE-style questions testing analysis, evaluation, and synthesis. Distractors should reflect common student misconceptions. Include multi-step reasoning.',
-    storyTone: 'Real-world professional scenarios. The player acts as a researcher, analyst, or problem-solver. Mature and motivating without being patronizing.',
-    exampleContext: 'Hong Kong economy, governance, university preparation, career pathways, global connections from HK perspective'
+    label: 'Secondary 4-6 (ages 15-17, DSE)',
+    language: 'Use proper school English. Technical words expected.',
+    contentDepth: 'Deep understanding. Multiple views. HKDSE style.',
+    questionStyle: 'DSE-style questions. Test analysis and evaluation.',
+    storyTone: 'Real world problems. You are the expert!',
+    exampleContext: 'Hong Kong — economy, university, careers, global issues'
   }
 };
 
@@ -68,6 +68,39 @@ STORY TONE: ${tier.storyTone}`;
 }
 
 // ============================================
+// THE PROCRASTINATION PROPHECY - NARRATIVE HELPERS
+// ============================================
+
+const NARRATIVE_CONTEXT = {
+  // Simple hero story background - short and sweet
+  heroStory: `You are a Hero of Learning. The world needs you!
+The Shadow of Doom (distraction/procrastination) wants to stop you.
+Every time you study, you grow stronger.
+If you miss a day, the Shadow grows.
+Your mission: Learn, grow, and save the world from ignorance!`,
+
+  // Shadow messages based on level
+  getShadowMessage: (shadowLevel) => {
+    if (shadowLevel === 0) return '';
+    if (shadowLevel <= 20) return 'The Shadow watches from far away.';
+    if (shadowLevel <= 40) return 'The Shadow is getting closer...';
+    if (shadowLevel <= 60) return 'The Shadow grows stronger! Study to push it back!';
+    if (shadowLevel <= 80) return 'WARNING: The Shadow is very strong! Study now!';
+    return 'DANGER! The Shadow of Doom threatens to win! Study immediately!';
+  },
+
+  // Hero power messages
+  getHeroMessage: (heroPower, streakDays) => {
+    if (streakDays >= 30) return 'LEGENDARY HERO! The Shadow fears your power!';
+    if (streakDays >= 14) return 'Master Hero! Your light shines bright!';
+    if (streakDays >= 7) return 'Guardian Hero! You protect learning!';
+    if (streakDays >= 3) return 'Rising Hero! Your power grows!';
+    if (heroPower >= 20) return 'You are getting stronger!';
+    return 'Every study session makes you stronger!';
+  }
+};
+
+// ============================================
 // STUDY BUDDY CHAT
 // ============================================
 const chatWithStudyBuddy = async (message, conversationHistory, userContext) => {
@@ -76,11 +109,12 @@ const chatWithStudyBuddy = async (message, conversationHistory, userContext) => 
     ? `\n- Form Level: ${userContext.formLevel || 'unknown'}\n- Age Tier: ${userContext.ageTier}\nAdjust your language complexity to match their age group.`
     : '';
 
-  const systemPrompt = `You are "Study Buddy", a friendly and encouraging AI learning companion. Your characteristics:
-- Encouraging and positive, but not overly enthusiastic
-- Knowledgeable but explains things simply
-- Understanding of learning difficulties and stress
-- Provides practical advice
+  // Add Procrastination Prophecy context
+  const narrativeExtra = userContext.heroPower 
+    ? `\n- Hero Power: ${userContext.heroPower}/100\n- Current Streak: ${userContext.current_streak || 0} days\n- Shadow Level: ${userContext.shadowDoom || 0}/100\nEncourage them to study to grow their Hero Power and push back the Shadow!`
+    : '';
+
+  const systemPrompt = `You are "Study Buddy", a friendly AI learning companion. You know about The Procrastination Prophecy - where students are Heroes fighting the Shadow of Doom (procrastination).
 
 User Background:
 - Name: ${userContext.full_name || 'Student'}
@@ -88,16 +122,15 @@ User Background:
 - XP: ${userContext.xp || 0}
 - Study Streak: ${userContext.current_streak || 0} days
 - Completed Tasks: ${userContext.completed_tasks || 0}
-- Pending Tasks: ${userContext.pending_tasks || 0}
-- Today's Study Time: ${userContext.today_study_minutes || 0} minutes${tierExtra}
+- Today's Study Time: ${userContext.today_study_minutes || 0} minutes${tierExtra}${narrativeExtra}
 
 Rules:
-1. Keep responses concise (usually 2-4 sentences)
-2. Reference user data to motivate them when appropriate
-3. Provide specific, actionable advice
-4. Use emojis sparingly but effectively
-5. If user seems stressed, acknowledge their feelings first
-6. When answering academic questions, explain clearly with examples
+1. Keep responses short (2-4 sentences)
+2. Mention their Hero Power or Streak when relevant
+3. If they haven't studied today, gently remind them: "The Shadow grows when we don't study!"
+4. If they have a good streak, celebrate: "Your Hero Power is amazing!"
+5. Give specific, simple advice
+6. Use emojis sparingly
 7. Respond in the same language the user uses (Chinese or English)`;
 
   const validHistory = conversationHistory
@@ -210,29 +243,53 @@ function parseJSON(response) {
 }
 
 // ============================================
-// STORY QUEST - INTRO (tier-aware)
+// STORY QUEST - INTRO (Simplified for Procrastination Prophecy)
 // ============================================
-async function generateStoryIntro(topic, tierInfo = null) {
+async function generateStoryIntro(topic, tierInfo = null, heroContext = null) {
   console.log(`📖 generateStoryIntro called for topic: ${topic}, tier: ${tierInfo?.ageTier || 'default'}`);
   
   const tier = getTierPrompt(tierInfo);
   
+  // Build hero context message
+  let heroContextMsg = '';
+  if (heroContext) {
+    heroContextMsg = `
+HERO STATUS:
+- Hero Power: ${heroContext.heroPower || 10}/100
+- Current Streak: ${heroContext.streakDays || 0} days
+- Shadow Level: ${heroContext.shadowDoom || 0}/100
+- Current Stage: ${heroContext.currentStage || 1}/10`;
+  }
+  
   try {
-    const prompt = `You are creating the introduction for an educational RPG game.
-Topic: ${topic}
-${buildTierInstructions(tierInfo)}
+    const prompt = `Create a short intro for a learning adventure.
 
-Create an engaging story setup for learning ${topic}. The tone should be: ${tier.storyTone}
+TOPIC TO LEARN: ${topic}
+${buildTierInstructions(tierInfo)}${heroContextMsg}
 
-Return ONLY valid JSON (no markdown, no explanation):
+STORY SETUP (Keep it SHORT and SIMPLE):
+- The student is a Hero of Learning
+- They need to master ${topic} to grow stronger
+- The Shadow of Doom (procrastination) wants to stop them
+- Every lesson makes the Hero more powerful
+
+RULES:
+1. Title should be exciting but short
+2. Setting: 1-2 sentences ONLY
+3. Mentor message: Warm, simple, encouraging
+4. Use ${tier.language}
+
+Return ONLY valid JSON (no markdown):
 {
-  "title": "A creative adventure title related to ${topic}",
-  "setting": "2-3 sentences describing the game world where the player will learn ${topic}. Match the tone to the student's age group.",
-  "mentor_intro": "A warm greeting from a wise mentor character who will guide them. Match language complexity to the student's level."
+  "title": "Short exciting title about ${topic}",
+  "setting": "1-2 sentences. The hero must learn ${topic} to save the world from ignorance.",
+  "mentor_intro": "A short welcome message from your study guide. Mention that studying ${topic} will increase Hero Power and push back the Shadow.",
+  "hero_message": "A short motivational message about being a Hero of Learning",
+  "shadow_status": "${NARRATIVE_CONTEXT.getShadowMessage(heroContext?.shadowDoom || 0)}"
 }`;
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
-      maxTokens: 500 
+      maxTokens: 400 
     });
     
     console.log('📖 Story intro raw response:', response?.substring(0, 100) + '...');
@@ -244,59 +301,72 @@ Return ONLY valid JSON (no markdown, no explanation):
     }
     
     console.log('⚠️ Using default intro');
-    return getDefaultIntro(topic);
+    return getDefaultIntro(topic, heroContext);
   } catch (error) {
     console.error('❌ Story intro error:', error.message);
-    return getDefaultIntro(topic);
+    return getDefaultIntro(topic, heroContext);
   }
 }
 
-function getDefaultIntro(topic) {
+function getDefaultIntro(topic, heroContext = null) {
+  const shadowMsg = NARRATIVE_CONTEXT.getShadowMessage(heroContext?.shadowDoom || 0);
+  const heroMsg = NARRATIVE_CONTEXT.getHeroMessage(heroContext?.heroPower || 10, heroContext?.streakDays || 0);
+  
   return {
-    title: `The ${topic} Chronicles`,
-    setting: `In the mystical Library of Infinite Knowledge, ancient tomes containing the secrets of ${topic} await those brave enough to seek them. Magical crystals illuminate endless shelves of wisdom.`,
-    mentor_intro: `"Welcome, young scholar! I am Archimedes, keeper of ${topic} wisdom. Together, we shall unlock the mysteries that await. Are you ready to begin your journey?"`
+    title: `The ${topic} Quest`,
+    setting: `The world needs heroes who know ${topic}. The Shadow of Doom spreads ignorance. You must learn to fight back!`,
+    mentor_intro: `"Welcome, Hero! I am your guide. Learning ${topic} will make you stronger. Let's push back the Shadow together!"`,
+    hero_message: heroMsg,
+    shadow_status: shadowMsg
   };
 }
 
 // ============================================
-// STORY QUEST - SCENE GENERATION (tier-aware)
+// STORY QUEST - SCENE GENERATION (Simplified)
 // ============================================
 async function generateStoryScene(topic, chapter, sceneType, context = {}) {
   console.log(`🎭 generateStoryScene called: ${sceneType} for chapter ${chapter}`);
   
-  // Extract tierInfo from context if provided
   const tierInfo = context.tierInfo || null;
   const tier = getTierPrompt(tierInfo);
+  const heroContext = context.heroContext || null;
   
   try {
     const tierInstructions = tierInfo
       ? `\n${buildTierInstructions(tierInfo)}\n`
       : '';
 
+    const heroContextMsg = heroContext 
+      ? `\nThe student has Hero Power ${heroContext.heroPower}/100 and ${heroContext.streakDays} day streak. The Shadow is at ${heroContext.shadowDoom}/100.` 
+      : '';
+
     const prompts = {
-      narrative: `Write a short narrative paragraph (2-3 sentences) for chapter ${chapter} of a ${topic} learning adventure.${tierInstructions}Make it atmospheric and relate it to discovering knowledge about ${topic}. Tone: ${tier.storyTone}`,
-      dialogue: `Write a brief, encouraging dialogue from the wise mentor about the player's ${topic} journey. Chapter ${chapter}.${tierInstructions}Keep it warm and motivating. Tone: ${tier.storyTone}`,
-      choice: `Create a meaningful choice for the player in their ${topic} learning journey. Chapter ${chapter}.${tierInstructions}Give 3 options that represent different learning approaches. Tone: ${tier.storyTone}`,
-      reward: `Describe a magical reward item the player receives for their ${topic} progress.${tierInstructions}Make it thematic and age-appropriate. Tone: ${tier.storyTone}`,
-      finale: `Write a triumphant 2-3 sentence conclusion for chapter ${chapter} of the ${topic} adventure.${tierInstructions}Celebrate their learning progress. Tone: ${tier.storyTone}`
+      narrative: `Write 1-2 short sentences about the hero learning ${topic}.${tierInstructions}${heroContextMsg} Keep it simple. The hero is getting stronger. Tone: ${tier.storyTone}`,
+      
+      dialogue: `Write a short encouraging message (1-2 sentences) from the mentor about learning ${topic}.${tierInstructions} Mention that studying makes the hero stronger against the Shadow. Tone: ${tier.storyTone}`,
+      
+      choice: `Create a simple choice for the hero learning ${topic}.${tierInstructions} Give 3 options about different ways to study. Each option gives XP. Tone: ${tier.storyTone}`,
+      
+      reward: `Describe a simple reward the hero gets for learning ${topic}.${tierInstructions} Make it a tool or power that helps fight the Shadow. Tone: ${tier.storyTone}`,
+      
+      finale: `Write 2 short sentences celebrating the hero's progress in ${topic}.${tierInstructions} Mention they grew stronger and pushed back the Shadow. Tone: ${tier.storyTone}`
     };
 
     const formatInstructions = {
-      narrative: '{"type": "narrative", "text": "your narrative here"}',
-      dialogue: '{"type": "dialogue", "speaker": "Archimedes", "text": "dialogue here"}',
-      choice: '{"type": "choice", "text": "situation description", "speaker": "Archimedes", "choices": [{"text": "option 1", "reward": "courage", "xp": 20}, {"text": "option 2", "reward": "wisdom", "xp": 20}, {"text": "option 3", "reward": "creativity", "xp": 20}]}',
+      narrative: '{"type": "narrative", "text": "your short narrative here"}',
+      dialogue: '{"type": "dialogue", "speaker": "Guide", "text": "short dialogue here"}',
+      choice: '{"type": "choice", "text": "situation description", "speaker": "Guide", "choices": [{"text": "option 1", "reward": "courage", "xp": 20}, {"text": "option 2", "reward": "wisdom", "xp": 20}, {"text": "option 3", "reward": "focus", "xp": 20}]}',
       reward: '{"type": "reward", "text": "description", "item": {"name": "Item Name", "bonus": "+10% XP"}}',
-      finale: '{"type": "finale", "text": "finale narrative"}'
+      finale: '{"type": "finale", "text": "short finale text"}'
     };
 
     const prompt = `${prompts[sceneType] || prompts.narrative}
 
-Return ONLY valid JSON (no markdown, no explanation) in this exact format:
+Return ONLY valid JSON (no markdown):
 ${formatInstructions[sceneType] || formatInstructions.narrative}`;
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
-      maxTokens: 400 
+      maxTokens: 350 
     });
     
     const parsed = parseJSON(response);
@@ -316,74 +386,74 @@ function getDefaultScene(sceneType, topic, chapter) {
   const defaults = {
     narrative: { 
       type: 'narrative', 
-      text: `You venture deeper into the Library of ${topic}. Chapter ${chapter} of your journey continues, with new knowledge waiting to be discovered...` 
+      text: `You study ${topic}. Your Hero Power grows!` 
     },
     dialogue: { 
       type: 'dialogue', 
-      speaker: 'Archimedes', 
-      text: `"You're making wonderful progress, young scholar! The secrets of ${topic} are slowly revealing themselves to you."` 
+      speaker: 'Guide', 
+      text: `"Keep learning! Every lesson makes you stronger against the Shadow."` 
     },
     choice: {
       type: 'choice',
-      text: '"How do you wish to proceed on your journey?"',
-      speaker: 'Archimedes',
+      text: '"How will you study?"',
+      speaker: 'Guide',
       choices: [
-        { text: 'Take the challenging path', reward: 'courage', xp: 25 },
-        { text: 'Seek more preparation', reward: 'wisdom', xp: 20 },
-        { text: 'Trust my instincts', reward: 'flexibility', xp: 20 }
+        { text: 'Read carefully', reward: 'wisdom', xp: 20 },
+        { text: 'Practice problems', reward: 'skill', xp: 25 },
+        { text: 'Watch and learn', reward: 'insight', xp: 20 }
       ]
     },
     reward: { 
       type: 'reward', 
-      text: `Your dedication to ${topic} has been noticed!`, 
-      item: { name: 'Scroll of Understanding', bonus: '+10% XP' } 
+      text: `You got stronger at ${topic}!`, 
+      item: { name: 'Power Crystal', bonus: '+10% XP' } 
     },
     finale: { 
       type: 'finale', 
-      text: `A warm light fills the Library as you complete this chapter. Your understanding of ${topic} has grown tremendously!` 
+      text: `Great job! You mastered this part of ${topic}. The Shadow retreats!` 
     }
   };
   return defaults[sceneType] || defaults.narrative;
 }
 
 // ============================================
-// STORY QUEST - LESSON GENERATION (tier-aware)
+// STORY QUEST - LESSON GENERATION (Simplified)
 // ============================================
-async function generateStoryLesson(topic, chapter, conceptNumber, tierInfo = null) {
+async function generateStoryLesson(topic, chapter, conceptNumber, tierInfo = null, heroContext = null) {
   console.log(`📚 generateStoryLesson called: ${topic}, chapter ${chapter}, concept ${conceptNumber}, tier: ${tierInfo?.ageTier || 'default'}`);
   
   const tier = getTierPrompt(tierInfo);
   const totalChapters = tierInfo?.totalChapters || 4;
   
+  // Hero context message
+  const heroMsg = heroContext 
+    ? `The student is a Hero with Power ${heroContext.heroPower}/100. Frame this lesson as gaining a new ability to fight the Shadow of Doom.` 
+    : '';
+  
   try {
-    const prompt = `You are an expert teacher creating a mini-lesson for an educational RPG game set in Hong Kong.
+    const prompt = `Teach ONE simple concept about ${topic} for an educational game.
 
-Topic: ${topic}
 Chapter: ${chapter}/${totalChapters}
 Concept Number: ${conceptNumber}
 ${buildTierInstructions(tierInfo)}
+${heroMsg}
 
-Create a SHORT, engaging lesson teaching ONE specific concept about ${topic}. This should:
-1. Be 2-3 paragraphs maximum
-2. ${tier.contentDepth}
-3. ${tier.language}
-4. Be written in an encouraging, adventure-game style
+IMPORTANT RULES:
+1. Title: Short and clear
+2. Content: 2 short paragraphs maximum. Use simple words.
+3. ${tier.contentDepth}
+4. ${tier.language}
+5. End with ONE key point to remember
 
-Progressive difficulty across chapters:
-- Early chapters: Basic fundamentals, definitions, and introductions
-- Middle chapters: Core principles, how things work, and connections
-- Later chapters: Applying knowledge, patterns, and problem-solving
-- Final chapters: Advanced concepts, synthesis, and mastery challenges
-
-Return ONLY valid JSON (no markdown, no explanation):
+Return ONLY valid JSON (no markdown):
 {
-  "title": "Name of this specific concept",
-  "text": "The teaching content with example (2-3 paragraphs, age-appropriate)",
-  "keyPoint": "One sentence summary to remember"
+  "title": "Name of this concept (short)",
+  "text": "The teaching content (2 short paragraphs, simple language)",
+  "keyPoint": "One sentence to remember"
 }`;
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
-      maxTokens: 600 
+      maxTokens: 500 
     });
     
     const parsed = parseJSON(response);
@@ -408,14 +478,14 @@ Return ONLY valid JSON (no markdown, no explanation):
 function getDefaultLesson(topic, chapter) {
   return {
     type: 'lesson',
-    title: `${topic} Fundamentals - Chapter ${chapter}`,
-    text: `Welcome to this lesson about ${topic}! Understanding the basics will help you master more advanced topics later.\n\nThink of learning like building a tower - each block of knowledge supports the next. Take your time and make sure you understand each concept before moving on.`,
-    keyPoint: 'Practice and patience are key to mastery.'
+    title: `${topic} Basics - Part ${chapter}`,
+    text: `Welcome to ${topic}! Today you will learn something important.\n\nTake your time. Understanding is more important than speed.`,
+    keyPoint: 'Practice makes you stronger.'
   };
 }
 
 // ============================================
-// STORY QUEST - QUESTION GENERATION (tier-aware)
+// STORY QUEST - QUESTION GENERATION (Simplified)
 // ============================================
 async function generateStoryQuestion(topic, difficulty, questionType = 'multiple_choice', previousQuestions = [], conceptTitle = null, tierInfo = null) {
   console.log(`❓ generateStoryQuestion called: ${topic}, difficulty ${difficulty}, concept: ${conceptTitle}, tier: ${tierInfo?.ageTier || 'default'}`);
@@ -425,39 +495,37 @@ async function generateStoryQuestion(topic, difficulty, questionType = 'multiple
   
   try {
     const excludeList = previousQuestions.length > 0
-      ? `\n\nIMPORTANT: DO NOT repeat these questions that were already asked:\n${previousQuestions.slice(-5).map((q, i) => `${i + 1}. "${q}"`).join('\n')}\n\nCreate a COMPLETELY DIFFERENT question.`
+      ? `\n\nDO NOT repeat these questions:\n${previousQuestions.slice(-5).map((q, i) => `${i + 1}. "${q}"`).join('\n')}`
       : '';
 
     const totalChapters = tierInfo?.totalChapters || 4;
 
-    const prompt = `You are creating a quiz question for an educational RPG game about ${topic}.
+    const prompt = `Create a quiz question about ${topic}.
 
-Difficulty Level: ${difficulty}/${totalChapters} (1=beginner, ${totalChapters}=advanced)
+Difficulty: ${difficulty}/${totalChapters}
 ${buildTierInstructions(tierInfo)}
-${conceptTitle ? `This question should test understanding of: "${conceptTitle}"` : `Create a question about ${topic} appropriate for this difficulty level.`}
-${excludeList}
+${conceptTitle ? `Test this concept: "${conceptTitle}"` : `Create a question about ${topic}.`}${excludeList}
 
-Create a multiple choice question that:
+RULES:
 1. ${tier.questionStyle}
-2. Has exactly 4 choices with ONLY ONE correct answer
-3. Is appropriate for difficulty level ${difficulty} AND the student's age group
-4. Is educational and helps the learner understand ${topic} better
-5. Uses Hong Kong-relevant examples where possible
+2. 4 choices. ONLY ONE correct answer.
+3. Use simple Hong Kong examples if possible
+4. Keep it short
 
-Return ONLY valid JSON (no markdown, no explanation):
+Return ONLY valid JSON (no markdown):
 {
-  "question": "Your specific question about ${topic} here?",
+  "question": "Your question here?",
   "choices": [
-    {"text": "The correct answer", "correct": true},
-    {"text": "Plausible wrong answer 1", "correct": false},
-    {"text": "Plausible wrong answer 2", "correct": false},
-    {"text": "Plausible wrong answer 3", "correct": false}
+    {"text": "correct answer", "correct": true},
+    {"text": "wrong answer 1", "correct": false},
+    {"text": "wrong answer 2", "correct": false},
+    {"text": "wrong answer 3", "correct": false}
   ],
-  "explanation": "Brief explanation of why the correct answer is right (1-2 sentences, age-appropriate language)"
+  "explanation": "Why the answer is correct (1 sentence, simple)"
 }`;
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
-      maxTokens: 500 
+      maxTokens: 400 
     });
     
     const parsed = parseJSON(response);
@@ -487,16 +555,98 @@ Return ONLY valid JSON (no markdown, no explanation):
 function getDefaultQuestion(topic, difficulty) {
   return {
     type: 'question',
-    text: `What is essential for mastering ${topic}?`,
+    text: `What is the best way to learn ${topic}?`,
     choices: [
-      { text: 'Consistent practice and understanding concepts', correct: true },
-      { text: 'Memorizing without understanding', correct: false },
-      { text: 'Skipping the fundamentals', correct: false },
-      { text: 'Avoiding challenging problems', correct: false }
+      { text: 'Practice every day', correct: true },
+      { text: 'Study only before tests', correct: false },
+      { text: 'Never review', correct: false },
+      { text: 'Skip hard parts', correct: false }
     ].sort(() => Math.random() - 0.5),
-    explanation: `Consistent practice combined with conceptual understanding is the key to mastering ${topic}.`,
+    explanation: 'Daily practice helps you remember and understand better.',
     xp: 20 + (difficulty * 10)
   };
+}
+
+// ============================================
+// STUDY JOURNEY - Generate journey path
+// ============================================
+async function generateStudyJourney(studentId, currentStage, tierInfo = null) {
+  console.log(`🗺️ Generating study journey for stage ${currentStage}`);
+  
+  const tier = getTierPrompt(tierInfo);
+  
+  try {
+    const prompt = `Create a study journey milestone for stage ${currentStage} of 10.
+${buildTierInstructions(tierInfo)}
+
+This is part of "The Procrastination Prophecy" where students are Heroes fighting the Shadow of Doom.
+
+Return ONLY valid JSON:
+{
+  "stage": ${currentStage},
+  "title": "Short title for this stage",
+  "description": "What the hero needs to do (2 sentences)",
+  "challenge": "What they will learn or overcome",
+  "reward": "What power they gain",
+  "shadow_threat": "How the Shadow tries to stop them"
+}`;
+
+    const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
+      maxTokens: 350 
+    });
+    
+    const parsed = parseJSON(response);
+    if (parsed && parsed.title) {
+      return parsed;
+    }
+    
+    return getDefaultJourneyStage(currentStage);
+  } catch (error) {
+    console.error('❌ Journey generation error:', error.message);
+    return getDefaultJourneyStage(currentStage);
+  }
+}
+
+function getDefaultJourneyStage(stage) {
+  const stages = {
+    1: { stage: 1, title: "The Beginning", description: "Start your journey. Study for 15 minutes.", challenge: "First study session", reward: "Hero Badge", shadow_threat: "The Shadow whispers 'do it later'" },
+    2: { stage: 2, title: "First Steps", description: "Build your first 3-day streak.", challenge: "3-day streak", reward: "Streak Shield", shadow_threat: "The Shadow says 'skip today'" },
+    3: { stage: 3, title: "Rising Power", description: "Study 5 different subjects.", challenge: "Subject mastery", reward: "Knowledge Crystal", shadow_threat: "The Shadow hides your books" },
+    4: { stage: 4, title: "The Guardian", description: "Complete a 7-day streak.", challenge: "One week warrior", reward: "Focus Helm", shadow_threat: "The Shadow brings distractions" },
+    5: { stage: 5, title: "Week of Power", description: "Study 100 minutes in one week.", challenge: "Time master", reward: "Time Amulet", shadow_threat: "The Shadow steals your time" },
+    6: { stage: 6, title: "Deep Focus", description: "Complete a 30-minute study session.", challenge: "Deep work", reward: "Concentration Ring", shadow_threat: "The Shadow breaks your focus" },
+    7: { stage: 7, title: "The Scholar", description: "Answer 20 quiz questions correctly.", challenge: "Knowledge test", reward: "Wisdom Tome", shadow_threat: "The Shadow makes you doubt" },
+    8: { stage: 8, title: "Two Weeks Strong", description: "Maintain a 14-day streak.", challenge: "Fortnight hero", reward: "Persistence Armor", shadow_threat: "The Shadow says 'you can stop now'" },
+    9: { stage: 9, title: "Master Hero", description: "Study 200 minutes in one week.", challenge: "Study master", reward: "Legendary Crown", shadow_threat: "The Shadow attacks with tiredness" },
+    10: { stage: 10, title: "The Legend", description: "Complete a 30-day streak. Conquer the Procrastination Prophecy!", challenge: "Ultimate victory", reward: "Victory Trophy", shadow_threat: "The Shadow is defeated!" }
+  };
+  return stages[stage] || stages[1];
+}
+
+// ============================================
+// NARRATIVE MESSAGE - Get dynamic message based on state
+// ============================================
+function getNarrativeMessage(type, value) {
+  const messages = {
+    hero_power: [
+      { min: 0, max: 20, msg: 'You are beginning your hero journey!' },
+      { min: 21, max: 40, msg: 'Your power grows! Keep studying!' },
+      { min: 41, max: 60, msg: 'You are a true Hero of Learning!' },
+      { min: 61, max: 80, msg: 'The Shadow fears your dedication!' },
+      { min: 81, max: 100, msg: 'LEGENDARY! You are unstoppable!' }
+    ],
+    shadow_warning: [
+      { min: 0, max: 20, msg: '' },
+      { min: 21, max: 40, msg: 'The Shadow is watching...' },
+      { min: 41, max: 60, msg: 'The Shadow grows! Study to push it back!' },
+      { min: 61, max: 80, msg: 'WARNING: The Shadow is strong!' },
+      { min: 81, max: 100, msg: 'DANGER! Study now to defeat the Shadow!' }
+    ]
+  };
+  
+  const list = messages[type] || [];
+  const match = list.find(m => value >= m.min && value <= m.max);
+  return match ? match.msg : '';
 }
 
 // ============================================
@@ -590,5 +740,8 @@ module.exports = {
   generateStoryQuestion,
   generateStudySchedule,
   generateStudyTips,
-  TIER_PROMPT_CONFIG  // Export for testing/reference
+  generateStudyJourney,
+  getNarrativeMessage,
+  getNarrativeContext: () => NARRATIVE_CONTEXT,
+  TIER_PROMPT_CONFIG
 };
