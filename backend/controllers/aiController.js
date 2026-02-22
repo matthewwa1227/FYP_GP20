@@ -2,14 +2,42 @@ const { query } = require('../db/connection');
 const kimiService = require('../services/kimiService');
 
 // ============================================
+// HELPER: Extract URLs from message
+// ============================================
+const extractUrls = (text) => {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  return text.match(urlRegex) || [];
+};
+
+// ============================================
+// HELPER: Check if message is homework/help request
+// ============================================
+const isHomeworkRequest = (message) => {
+  const homeworkPatterns = [
+    /solve.*for me/i,
+    /what is the answer/i,
+    /give me the answer/i,
+    /help me do my homework/i,
+    /do this.*for me/i,
+    /what's the solution/i,
+    /tell me the answer/i,
+    /just give me/i,
+    /what is.*\?$/i,
+    /how do I solve/i,
+    /calculate.*for me/i
+  ];
+  return homeworkPatterns.some(pattern => pattern.test(message));
+};
+
+// ============================================
 // STUDY BUDDY CONTROLLERS
 // ============================================
 
-// Chat with Study Buddy
+// Chat with Study Buddy - Enhanced with Socratic method
 const chatWithBuddy = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { message, conversationHistory = [] } = req.body;
+    const { message, conversationHistory = [], mediaContent = [] } = req.body;
 
     if (!message || message.trim().length === 0) {
       return res.status(400).json({
@@ -18,33 +46,41 @@ const chatWithBuddy = async (req, res) => {
       });
     }
 
-    // Get user context from students table
+    // Get user context
     const userStatsResult = await query(`
       SELECT 
-        s.full_name,
-        s.current_level,
-        s.experience_points,
-        s.current_streak,
-        s.total_study_minutes,
-        s.total_sessions,
+        s.full_name, s.current_level, s.experience_points, s.current_streak,
+        s.total_study_minutes, s.total_sessions,
         (SELECT COUNT(*) FROM tasks WHERE user_id = s.id AND status = 'completed') as completed_tasks,
         (SELECT COUNT(*) FROM tasks WHERE user_id = s.id AND status = 'pending') as pending_tasks,
         (SELECT COALESCE(SUM(duration), 0) FROM study_sessions WHERE student_id = s.id AND DATE(created_at) = CURRENT_DATE) as today_study_minutes
-      FROM students s
-      WHERE s.id = $1
+      FROM students s WHERE s.id = $1
     `, [userId]);
 
     const userContext = userStatsResult.rows[0] || {};
 
-    const contextForAI = {
-      full_name: userContext.full_name,
-      level: userContext.current_level,
-      xp: userContext.experience_points,
-      current_streak: userContext.current_streak,
-      completed_tasks: userContext.completed_tasks || 0,
-      pending_tasks: userContext.pending_tasks || 0,
-      today_study_minutes: userContext.today_study_minutes || 0
-    };
+    // Check for recent hint requests on same topic (for escalation)
+    const recentHintsResult = await query(`
+      SELECT user_message, ai_response, created_at
+      FROM ai_conversations
+      WHERE user_id = $1 
+        AND conversation_type = 'chat'
+        AND created_at > NOW() - INTERVAL '30 minutes'
+      ORDER BY created_at DESC
+      LIMIT 5
+    `, [userId]);
+
+    // Count how many times user asked about similar topic recently
+    const recentHints = recentHintsResult.rows;
+    const similarTopicCount = recentHints.filter(h => 
+      message.toLowerCase().includes(h.user_message.toLowerCase().substring(0, 10)) ||
+      h.user_message.toLowerCase().includes(message.toLowerCase().substring(0, 10))
+    ).length;
+
+    // Extract URLs from message
+    const urls = extractUrls(message);
+    const hasUrls = urls.length > 0;
+    const isHomework = isHomeworkRequest(message);
 
     // Get conversation history from database
     const dbHistoryResult = await query(`
@@ -52,10 +88,8 @@ const chatWithBuddy = async (req, res) => {
       FROM ai_conversations
       WHERE user_id = $1 
         AND conversation_type = 'chat'
-        AND user_message IS NOT NULL 
-        AND user_message != ''
-        AND ai_response IS NOT NULL 
-        AND ai_response != ''
+        AND user_message IS NOT NULL AND user_message != ''
+        AND ai_response IS NOT NULL AND ai_response != ''
       ORDER BY created_at DESC
       LIMIT 10
     `, [userId]);
@@ -66,18 +100,33 @@ const chatWithBuddy = async (req, res) => {
       formattedHistory.push({ role: 'assistant', content: row.ai_response });
     });
 
-    // Get AI response
-    const aiResponse = await kimiService.chatWithStudyBuddy(
+    // Build enhanced context for AI
+    const contextForAI = {
+      full_name: userContext.full_name,
+      level: userContext.current_level,
+      xp: userContext.experience_points,
+      current_streak: userContext.current_streak,
+      completed_tasks: userContext.completed_tasks || 0,
+      pending_tasks: userContext.pending_tasks || 0,
+      today_study_minutes: userContext.today_study_minutes || 0,
+      recentHintCount: similarTopicCount,
+      isHomeworkRequest: isHomework,
+      hasUrls: hasUrls,
+      urls: urls
+    };
+
+    // Get AI response with Socratic mode
+    const aiResponse = await kimiService.chatWithStudyBuddySocratic(
       message,
       formattedHistory,
-      contextForAI
+      contextForAI,
+      mediaContent
     );
 
-    // Save valid conversations
+    // Save conversation
     const isValidResponse = aiResponse && 
       aiResponse.trim() !== '' &&
-      !aiResponse.includes('connection issue') &&
-      !aiResponse.includes('Try again');
+      !aiResponse.includes('connection issue');
 
     if (isValidResponse) {
       await query(`
@@ -89,10 +138,11 @@ const chatWithBuddy = async (req, res) => {
     res.json({
       success: true,
       response: aiResponse,
-      userContext: {
-        name: userContext.full_name,
-        level: userContext.current_level,
-        todayStudyMinutes: userContext.today_study_minutes || 0
+      meta: {
+        hintLevel: similarTopicCount,
+        isHomework: isHomework,
+        urlsDetected: urls.length,
+        isDirectAnswer: similarTopicCount >= 3
       }
     });
 
@@ -105,7 +155,10 @@ const chatWithBuddy = async (req, res) => {
   }
 };
 
-// Generate optimized study schedule
+// ============================================
+// REST OF CONTROLLERS (unchanged)
+// ============================================
+
 const generateSchedule = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -208,7 +261,6 @@ const generateSchedule = async (req, res) => {
   }
 };
 
-// Get study tips
 const getStudyTips = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -245,7 +297,6 @@ const getStudyTips = async (req, res) => {
   }
 };
 
-// Get conversation history
 const getConversationHistory = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -256,10 +307,8 @@ const getConversationHistory = async (req, res) => {
       FROM ai_conversations
       WHERE user_id = $1 
         AND conversation_type = 'chat'
-        AND user_message IS NOT NULL 
-        AND user_message != ''
-        AND ai_response IS NOT NULL 
-        AND ai_response != ''
+        AND user_message IS NOT NULL AND user_message != ''
+        AND ai_response IS NOT NULL AND ai_response != ''
       ORDER BY created_at DESC
       LIMIT $2
     `, [userId, parseInt(limit)]);
@@ -278,7 +327,6 @@ const getConversationHistory = async (req, res) => {
   }
 };
 
-// Get scheduled sessions
 const getScheduledSessions = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -326,7 +374,6 @@ const getScheduledSessions = async (req, res) => {
 // STORY QUEST CONTROLLERS
 // ============================================
 
-// Generate story introduction
 const generateStoryIntroduction = async (req, res) => {
   try {
     const { topic } = req.body;
@@ -356,7 +403,6 @@ const generateStoryIntroduction = async (req, res) => {
   }
 };
 
-// Generate story scene
 const generateScene = async (req, res) => {
   try {
     const { topic, chapter, sceneType, context } = req.body;
@@ -391,7 +437,6 @@ const generateScene = async (req, res) => {
   }
 };
 
-// Generate lesson
 const generateLesson = async (req, res) => {
   try {
     const { topic, chapter, conceptNumber } = req.body;
@@ -429,7 +474,6 @@ const generateLesson = async (req, res) => {
   }
 };
 
-// Generate question
 const generateQuestion = async (req, res) => {
   try {
     const { topic, difficulty, questionType, previousQuestions, conceptTitle } = req.body;
@@ -441,7 +485,7 @@ const generateQuestion = async (req, res) => {
       });
     }
 
-    console.log(`❓ Generating question for ${topic} (difficulty: ${difficulty}, previous: ${previousQuestions?.length || 0})`);
+    console.log(`❓ Generating question for ${topic} (difficulty: ${difficulty})`);
     
     const question = await kimiService.generateStoryQuestion(
       topic,
@@ -465,13 +509,11 @@ const generateQuestion = async (req, res) => {
   }
 };
 
-// Save story quest progress
 const saveStoryProgress = async (req, res) => {
   try {
     const userId = req.user.id;
     const { topic, chapter, xp, hp, inventory, completed } = req.body;
 
-    // Check if story_quest_progress table exists, create if not
     await query(`
       CREATE TABLE IF NOT EXISTS story_quest_progress (
         id SERIAL PRIMARY KEY,
@@ -516,7 +558,6 @@ const saveStoryProgress = async (req, res) => {
   }
 };
 
-// Get story quest progress
 const getStoryProgress = async (req, res) => {
   try {
     const userId = req.user.id;

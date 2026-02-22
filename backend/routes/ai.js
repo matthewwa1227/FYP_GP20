@@ -11,8 +11,11 @@ router.use(authenticateToken);
 // STUDY BUDDY ROUTES
 // ============================================
 
-// Chat with Study Buddy
+// Chat with Study Buddy (Socratic mode)
 router.post('/chat', aiController.chatWithBuddy);
+
+// Chat with media (images/videos)
+router.post('/chat/media', aiController.chatWithBuddy);
 
 // Generate optimized study schedule
 router.post('/generate-schedule', aiController.generateSchedule);

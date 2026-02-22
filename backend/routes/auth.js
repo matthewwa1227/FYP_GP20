@@ -15,7 +15,7 @@ const VALID_FORM_LEVELS = [
   'S1','S2','S3','S4','S5','S6'
 ];
 
-const VALID_ROLES = ['student', 'parent'];
+const VALID_ROLES = ['student', 'parent', 'teacher'];
 
 // Helper: generate JWT with tier info
 function generateToken(user) {

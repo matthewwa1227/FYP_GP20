@@ -160,8 +160,8 @@ Rules:
     const completion = await kimi.chat.completions.create({
       model: 'kimi-k2.5',
       messages,
-      max_tokens: 1000,
-      thinking: { type: 'disabled' }
+      max_tokens: 2000,
+      thinking: { type: 'enabled' }
     });
 
     console.log('✅ Kimi API response received');
@@ -191,11 +191,11 @@ const sendMessageToKimi = async (messages, options = {}) => {
 
     const validMessages = messages.filter(msg => {
       if (!msg || !msg.role || !msg.content) return false;
-      if (typeof msg.content !== 'string' || msg.content.trim() === '') return false;
+      if (typeof msg.content !== 'string' && typeof msg.content !== 'object') return false;
       return true;
     }).map(msg => ({
       role: msg.role,
-      content: msg.content.trim()
+      content: typeof msg.content === 'string' ? msg.content.trim() : msg.content
     }));
 
     if (validMessages.length === 0) {
@@ -212,11 +212,23 @@ const sendMessageToKimi = async (messages, options = {}) => {
       thinking: { type: useThinking ? 'enabled' : 'disabled' }
     });
 
-    if (completion?.choices?.[0]?.message?.content) {
-      console.log('✅ Response received');
-      return completion.choices[0].message.content;
+    console.log('📥 Raw response:', JSON.stringify(completion, null, 2).substring(0, 500));
+
+    // Handle different response formats
+    if (completion && completion.choices && completion.choices.length > 0) {
+      const choice = completion.choices[0];
+      if (choice.message && choice.message.content) {
+        console.log('✅ Response received');
+        return choice.message.content;
+      }
+      // Handle thinking mode which might have different structure
+      if (choice.message && choice.message.thinking) {
+        console.log('✅ Response received (thinking mode)');
+        return choice.message.thinking;
+      }
     }
 
+    console.error('❌ Unexpected response structure:', JSON.stringify(completion, null, 2));
     throw new Error('Invalid response from Kimi API');
 
   } catch (error) {
@@ -289,7 +301,8 @@ Return ONLY valid JSON (no markdown):
 }`;
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
-      maxTokens: 400 
+      maxTokens: 800,
+      useThinking: true
     });
     
     console.log('📖 Story intro raw response:', response?.substring(0, 100) + '...');
@@ -366,7 +379,8 @@ Return ONLY valid JSON (no markdown):
 ${formatInstructions[sceneType] || formatInstructions.narrative}`;
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
-      maxTokens: 350 
+      maxTokens: 600,
+      useThinking: true
     });
     
     const parsed = parseJSON(response);
@@ -453,7 +467,8 @@ Return ONLY valid JSON (no markdown):
 }`;
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
-      maxTokens: 500 
+      maxTokens: 1000,
+      useThinking: true
     });
     
     const parsed = parseJSON(response);
@@ -525,7 +540,8 @@ Return ONLY valid JSON (no markdown):
 }`;
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
-      maxTokens: 400 
+      maxTokens: 800,
+      useThinking: true
     });
     
     const parsed = parseJSON(response);
@@ -717,6 +733,145 @@ const generateSmartFallbackSchedule = (tasks, dateRange, preferences = {}) => {
 };
 
 // ============================================
+// STUDY BUDDY - SOCRATIC METHOD (No direct answers)
+// ============================================
+const chatWithStudyBuddySocratic = async (message, conversationHistory, userContext, mediaContent = []) => {
+  const tierExtra = userContext.ageTier
+    ? `\n- Form Level: ${userContext.formLevel || 'unknown'}\n- Age Tier: ${userContext.ageTier}\nAdjust your language complexity to match their age group.`
+    : '';
+
+  // Determine if we should give direct answer based on hint count
+  const shouldGiveDirectAnswer = userContext.recentHintCount >= 3;
+  const isHomeworkRequest = userContext.isHomeworkRequest;
+  const hasUrls = userContext.hasUrls;
+  const urls = userContext.urls || [];
+
+  // Build the Socratic prompt
+  let socraticInstruction = '';
+  
+  if (isHomeworkRequest && !shouldGiveDirectAnswer) {
+    // STRONG SOCRATIC MODE - Guide without giving answer
+    socraticInstruction = `
+🚫 IMPORTANT - SOCRATIC TEACHING MODE:
+The student is asking for help with what appears to be homework or a direct answer.
+DO NOT give the direct answer. Instead:
+
+1. Acknowledge their question warmly
+2. Ask them what they already know or have tried
+3. Give a SMALL hint or ask a guiding question
+4. Break the problem into smaller steps
+5. Encourage them to think through it
+
+EXAMPLE RESPONSES:
+- "That's a great question! What have you tried so far?"
+- "Let's think about this together. What do you know about [concept]?"
+- "Here's a small hint: [hint]. Can you try from there?"
+- "Break this into steps. What's the first thing you need to find?"
+
+NEVER say "The answer is..." or give the complete solution.`;
+  } else if (shouldGiveDirectAnswer && isHomeworkRequest) {
+    // ESCALATION MODE - They've asked 3+ times, provide answer with explanation
+    socraticInstruction = `
+⚠️ ESCALATION MODE - Student has asked ${userContext.recentHintCount} times about similar topic.
+You may NOW provide the answer, BUT:
+1. First acknowledge their persistence
+2. Give the answer clearly
+3. Explain WHY it's the answer (the reasoning)
+4. Give a similar practice problem to reinforce learning`;
+  }
+
+  // URL handling instruction
+  let urlInstruction = '';
+  if (hasUrls) {
+    urlInstruction = `
+📎 URL DETECTED: The user shared these links: ${urls.join(', ')}
+If you can analyze web content, reference information from these URLs.
+If you cannot access URLs, ask the user to share the key content from the page.`;
+  }
+
+  // Media handling instruction
+  let mediaInstruction = '';
+  if (mediaContent && mediaContent.length > 0) {
+    const imageCount = mediaContent.filter(m => m.type === 'image_url').length;
+    const videoCount = mediaContent.filter(m => m.type === 'video_url').length;
+    mediaInstruction = `
+📸 MEDIA ATTACHED: ${imageCount} image(s), ${videoCount} video(s)
+Analyze the media content and reference specific details in your response.
+If it's a homework problem in the image, use SOCRATIC method - guide, don't just answer.`;
+  }
+
+  const systemPrompt = `You are "Study Buddy", a wise and encouraging AI tutor who uses the Socratic method.
+
+📚 TEACHING PHILOSOPHY:
+- Guide students to discover answers themselves
+- Ask questions more than giving answers
+- Praise effort and thinking process
+- Break complex problems into steps
+- Only give direct answers after student has tried multiple times (3+ attempts)
+
+👤 STUDENT CONTEXT:
+- Name: ${userContext.full_name || 'Student'}
+- Level: ${userContext.level || 1}
+- Streak: ${userContext.current_streak || 0} days
+- Recent attempts on similar topic: ${userContext.recentHintCount || 0}
+${tierExtra}
+
+${socraticInstruction}
+${urlInstruction}
+${mediaInstruction}
+
+💬 RESPONSE STYLE:
+- Keep responses concise (3-5 sentences max)
+- Use emojis to be friendly
+- Encourage growth mindset
+- If student seems frustrated, be extra supportive`;
+
+  // Build messages array
+  const validHistory = conversationHistory
+    .slice(-10)
+    .filter(msg => msg && msg.role && msg.content && typeof msg.content === 'string')
+    .map(msg => ({ role: msg.role, content: msg.content.trim() }));
+
+  const messages = [{ role: 'system', content: systemPrompt }];
+  
+  // Add media content if present
+  if (mediaContent && mediaContent.length > 0) {
+    const content = [
+      { type: 'text', text: message || 'Please analyze this content:' }
+    ];
+    
+    for (const media of mediaContent.slice(0, 5)) { // Limit to 5 media items
+      if (media.type === 'image_url' && media.image_url) {
+        content.push({ type: 'image_url', image_url: media.image_url });
+      }
+    }
+    
+    messages.push({ role: 'user', content });
+  } else {
+    messages.push(...validHistory);
+    messages.push({ role: 'user', content: message });
+  }
+
+  try {
+    console.log('🚀 Calling Kimi API for Socratic chat with thinking...');
+    
+    const completion = await kimi.chat.completions.create({
+      model: 'kimi-k2.5',
+      messages,
+      max_tokens: 2000,
+      thinking: { type: 'enabled' }
+    });
+
+    return completion.choices[0].message.content;
+  } catch (error) {
+    console.error('❌ Kimi API error:', error.message);
+    return shouldGiveDirectAnswer 
+      ? "I've guided you through this a few times. Let me explain the answer now..."
+      : "That's a great question! What have you tried so far? Let's work through this together. 🤔";
+  }
+};
+
+// ============================================
 // STUDY TIPS
 // ============================================
 const generateStudyTips = async ({ subject, difficulty, performance }) => {
@@ -733,6 +888,7 @@ const generateStudyTips = async ({ subject, difficulty, performance }) => {
 // ============================================
 module.exports = {
   chatWithStudyBuddy,
+  chatWithStudyBuddySocratic,
   sendMessageToKimi,
   generateStoryIntro,
   generateStoryScene,

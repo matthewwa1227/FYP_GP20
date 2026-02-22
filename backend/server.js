@@ -64,6 +64,31 @@ app.use('/api/ai/story', require('./routes/aiStory'));
 
 app.use('/api/schedule', require('./routes/schedule'));
 
+// Revision Mode (Document-based learning)
+app.use('/api/revision', require('./routes/revision'));
+
+// ============================================
+// NEW FEATURES v2.0
+// ============================================
+
+// Progress Monitoring & Goals
+app.use('/api/progress', require('./routes/progress'));
+
+// Parent-Teacher Rewards Collaboration
+app.use('/api/rewards', require('./routes/rewards'));
+
+// AI Conversation Review
+app.use('/api/ai-conversations', require('./routes/aiConversations'));
+
+// Teacher Module (Classes, Analytics, Session Verification)
+app.use('/api/teacher', require('./routes/teacher'));
+
+// Social Features (Study Groups, Friends, Challenges)
+app.use('/api/social', require('./routes/social'));
+
+// Schedule Optimizer
+app.use('/api/schedule-optimizer', require('./routes/scheduleOptimizer'));
+
 // ============================================
 // NEW: ROOT API ENDPOINT (FIXES YOUR /api ISSUE)
 // ============================================

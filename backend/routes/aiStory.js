@@ -585,4 +585,118 @@ router.get('/test-schedule-block/:type', authenticateToken, (req, res) => {
   res.json({ message: 'No block', type });
 });
 
+// ============================================
+// POST /schedule - Generate chapter schedule for topic
+// ============================================
+router.post('/schedule', authenticateToken, async (req, res) => {
+  console.log('📅 /schedule endpoint hit');
+
+  try {
+    const { topic } = req.body;
+
+    if (!topic) {
+      return res.status(400).json({ error: 'Topic is required' });
+    }
+
+    console.log(`📅 Generating schedule for: ${topic}`);
+
+    const prompt = `Create a 4-chapter learning schedule for "${topic}".
+
+Return ONLY valid JSON in this exact format:
+{
+  "chapters": [
+    {
+      "title": "Chapter 1 Title",
+      "focus": "What to learn in this chapter",
+      "estimatedTime": "15 min"
+    },
+    {
+      "title": "Chapter 2 Title", 
+      "focus": "What to learn in this chapter",
+      "estimatedTime": "20 min"
+    },
+    {
+      "title": "Chapter 3 Title",
+      "focus": "What to learn in this chapter", 
+      "estimatedTime": "25 min"
+    },
+    {
+      "title": "Chapter 4 Title",
+      "focus": "What to learn in this chapter",
+      "estimatedTime": "30 min"
+    }
+  ]
+}
+
+Make it progressive: Chapter 1 is foundation, Chapter 4 is mastery.
+Use exciting chapter titles that sound like an RPG game.
+Keep estimated times between 15-30 minutes.`;
+
+    const { sendMessageToKimi } = require('../services/kimiService');
+    
+    let response;
+    try {
+      response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
+        maxTokens: 800,
+        useThinking: false  // Disable thinking for JSON responses
+      });
+    } catch (apiError) {
+      console.error('API call failed, using fallback:', apiError.message);
+      // Return fallback immediately if API fails
+      return res.json({
+        success: true,
+        chapters: [
+          { title: 'The Beginning', focus: 'Foundation Concepts', estimatedTime: '15 min' },
+          { title: 'First Steps', focus: 'Core Principles', estimatedTime: '20 min' },
+          { title: 'The Challenge', focus: 'Advanced Application', estimatedTime: '25 min' },
+          { title: 'Mastery', focus: 'Expert Level', estimatedTime: '30 min' }
+        ]
+      });
+    }
+
+    // Try to parse JSON from response
+    let parsed;
+    try {
+      // Extract JSON from response (in case there's extra text)
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0]);
+      } else {
+        parsed = JSON.parse(response);
+      }
+    } catch (parseError) {
+      console.error('JSON parse error:', parseError.message);
+      console.log('Raw response:', response);
+      // Use fallback
+      parsed = {
+        chapters: [
+          { title: 'The Beginning', focus: 'Foundation Concepts', estimatedTime: '15 min' },
+          { title: 'First Steps', focus: 'Core Principles', estimatedTime: '20 min' },
+          { title: 'The Challenge', focus: 'Advanced Application', estimatedTime: '25 min' },
+          { title: 'Mastery', focus: 'Expert Level', estimatedTime: '30 min' }
+        ]
+      };
+    }
+    
+    console.log('✅ Schedule generated');
+    res.json({
+      success: true,
+      ...parsed
+    });
+
+  } catch (error) {
+    console.error('❌ Schedule generation error:', error.message);
+    // Always return fallback on error
+    res.json({
+      success: true,
+      chapters: [
+        { title: 'The Beginning', focus: 'Foundation Concepts', estimatedTime: '15 min' },
+        { title: 'First Steps', focus: 'Core Principles', estimatedTime: '20 min' },
+        { title: 'The Challenge', focus: 'Advanced Application', estimatedTime: '25 min' },
+        { title: 'Mastery', focus: 'Expert Level', estimatedTime: '30 min' }
+      ]
+    });
+  }
+});
+
 module.exports = router;

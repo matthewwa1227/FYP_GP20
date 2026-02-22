@@ -558,4 +558,198 @@ router.get('/schedule-status', authenticateToken, async (req, res) => {
   }
 });
 
+// ============================================
+// GET /api/student/schedule - Get student's weekly schedule
+// ============================================
+router.get('/schedule', authenticateToken, async (req, res) => {
+  try {
+    const studentId = req.student?.id || req.user?.id;
+
+    if (!studentId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Not authenticated'
+      });
+    }
+
+    // Get schedule from student_schedules table
+    const result = await query(`
+      SELECT 
+        day_of_week,
+        is_rest_day,
+        study_start_time,
+        study_end_time
+      FROM student_schedules
+      WHERE student_id = $1
+      ORDER BY day_of_week
+    `, [studentId]);
+
+    // If no schedule exists, create default schedule
+    if (result.rows.length === 0) {
+      const defaultSchedule = [];
+      for (let i = 0; i < 7; i++) {
+        defaultSchedule.push({
+          student_id: studentId,
+          day_of_week: i,
+          is_rest_day: i === 0, // Sunday is default rest day
+          study_start_time: '09:00:00',
+          study_end_time: '17:00:00'
+        });
+        
+        await query(`
+          INSERT INTO student_schedules (student_id, day_of_week, is_rest_day, study_start_time, study_end_time)
+          VALUES ($1, $2, $3, $4, $5)
+          ON CONFLICT (student_id, day_of_week) DO NOTHING
+        `, [studentId, i, i === 0, '09:00:00', '17:00:00']);
+      }
+      
+      return res.json({
+        success: true,
+        schedule: defaultSchedule
+      });
+    }
+
+    res.json({
+      success: true,
+      schedule: result.rows
+    });
+
+  } catch (error) {
+    console.error('Get schedule error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get schedule',
+      error: error.message
+    });
+  }
+});
+
+// ============================================
+// PUT /api/student/schedule - Update student's weekly schedule
+// ============================================
+router.put('/schedule', authenticateToken, async (req, res) => {
+  try {
+    const studentId = req.student?.id || req.user?.id;
+
+    if (!studentId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Not authenticated'
+      });
+    }
+
+    const { schedule } = req.body;
+
+    if (!schedule || !Array.isArray(schedule)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Schedule array is required'
+      });
+    }
+
+    // Validate schedule data
+    for (const day of schedule) {
+      if (typeof day.day_of_week !== 'number' || day.day_of_week < 0 || day.day_of_week > 6) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid day_of_week. Must be 0-6.'
+        });
+      }
+    }
+
+    // Update or insert schedule for each day
+    const results = [];
+    for (const day of schedule) {
+      const result = await query(`
+        INSERT INTO student_schedules (student_id, day_of_week, is_rest_day, study_start_time, study_end_time)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (student_id, day_of_week) 
+        DO UPDATE SET 
+          is_rest_day = EXCLUDED.is_rest_day,
+          study_start_time = EXCLUDED.study_start_time,
+          study_end_time = EXCLUDED.study_end_time,
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING day_of_week, is_rest_day, study_start_time, study_end_time
+      `, [
+        studentId,
+        day.day_of_week,
+        day.is_rest_day,
+        day.study_start_time || '09:00:00',
+        day.study_end_time || '17:00:00'
+      ]);
+      
+      results.push(result.rows[0]);
+    }
+
+    console.log(`✅ Schedule updated for student ${studentId}`);
+
+    res.json({
+      success: true,
+      message: 'Schedule updated successfully',
+      schedule: results
+    });
+
+  } catch (error) {
+    console.error('Update schedule error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update schedule',
+      error: error.message
+    });
+  }
+});
+
+// ============================================
+// POST /api/student/rest-day - Record a rest day and apply benefits
+// ============================================
+router.post('/rest-day', authenticateToken, async (req, res) => {
+  try {
+    const studentId = req.student?.id || req.user?.id;
+
+    if (!studentId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Not authenticated'
+      });
+    }
+
+    const { restDate, benefits } = req.body;
+    const date = restDate || new Date().toISOString().split('T')[0];
+
+    // Record rest day in database
+    await query(`
+      INSERT INTO rest_days (student_id, rest_date, benefits_applied, created_at)
+      VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+      ON CONFLICT (student_id, rest_date) DO NOTHING
+    `, [studentId, date, JSON.stringify(benefits)]);
+
+    // Apply streak protection if enabled
+    if (benefits?.streakProtection) {
+      await query(`
+        INSERT INTO streak_protection (student_id, protected_date, reason)
+        VALUES ($1, $2, 'rest_day')
+        ON CONFLICT DO NOTHING
+      `, [studentId, date]);
+    }
+
+    res.json({
+      success: true,
+      message: 'Rest day recorded successfully',
+      benefits: {
+        xpBoost: benefits?.xpBoost || 1.5,
+        streakProtection: benefits?.streakProtection || true,
+        energyRestore: benefits?.energyRestore || true
+      }
+    });
+
+  } catch (error) {
+    console.error('Rest day error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to record rest day',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;
