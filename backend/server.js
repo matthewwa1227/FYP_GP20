@@ -62,6 +62,9 @@ app.use('/api/tutor', require('./routes/tutor'));
 
 app.use('/api/ai/story', require('./routes/aiStory'));
 
+// Story Quest RPG Routes
+app.use('/api/storyquest', require('./routes/storyquest'));
+
 app.use('/api/schedule', require('./routes/schedule'));
 
 // Revision Mode (Document-based learning)
