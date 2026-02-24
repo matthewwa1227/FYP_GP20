@@ -58,8 +58,6 @@ app.use('/api/ai', require('./routes/ai'));
 // Tasks System
 app.use('/api/tasks', require('./routes/tasks'));
 
-app.use('/api/tutor', require('./routes/tutor'));
-
 app.use('/api/ai/story', require('./routes/aiStory'));
 
 // Story Quest RPG Routes
@@ -79,9 +77,6 @@ app.use('/api/progress', require('./routes/progress'));
 
 // Parent-Teacher Rewards Collaboration
 app.use('/api/rewards', require('./routes/rewards'));
-
-// AI Conversation Review
-app.use('/api/ai-conversations', require('./routes/aiConversations'));
 
 // Teacher Module (Classes, Analytics, Session Verification)
 app.use('/api/teacher', require('./routes/teacher'));

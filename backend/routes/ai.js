@@ -2,32 +2,10 @@ const express = require('express');
 const router = express.Router();
 const aiController = require('../controllers/aiController');
 const { authenticateToken } = require('../middleware/auth');
-const { checkScheduleLimits } = require('../middleware/scheduleGuard'); // Add this import
+const { checkScheduleLimits } = require('../middleware/scheduleGuard');
 
 // Apply authentication to all routes
 router.use(authenticateToken);
-
-// ============================================
-// STUDY BUDDY ROUTES
-// ============================================
-
-// Chat with Study Buddy (Socratic mode)
-router.post('/chat', aiController.chatWithBuddy);
-
-// Chat with media (images/videos)
-router.post('/chat/media', aiController.chatWithBuddy);
-
-// Generate optimized study schedule
-router.post('/generate-schedule', aiController.generateSchedule);
-
-// Get study tips
-router.get('/tips', aiController.getStudyTips);
-
-// Get conversation history
-router.get('/history', aiController.getConversationHistory);
-
-// Get scheduled sessions
-router.get('/sessions', aiController.getScheduledSessions);
 
 // ============================================
 // STORY QUEST ROUTES - Protected by schedule limits
