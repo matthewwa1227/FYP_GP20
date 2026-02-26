@@ -500,7 +500,7 @@ function getDefaultLesson(topic, chapter) {
 }
 
 // ============================================
-// STORY QUEST - QUESTION GENERATION (Simplified)
+// STORY QUEST - QUESTION GENERATION (Educational Content)
 // ============================================
 async function generateStoryQuestion(topic, difficulty, questionType = 'multiple_choice', previousQuestions = [], conceptTitle = null, tierInfo = null) {
   console.log(`❓ generateStoryQuestion called: ${topic}, difficulty ${difficulty}, concept: ${conceptTitle}, tier: ${tierInfo?.ageTier || 'default'}`);
@@ -514,33 +514,69 @@ async function generateStoryQuestion(topic, difficulty, questionType = 'multiple
       : '';
 
     const totalChapters = tierInfo?.totalChapters || 4;
+    const chapterContext = conceptTitle || `${topic} - Chapter ${difficulty}`;
 
-    const prompt = `Create a quiz question about ${topic}.
+    const prompt = `You are creating a quiz question for a Hong Kong secondary student (Form 1-3, ages 12-15) studying ${topic.toUpperCase()}.
 
-Difficulty: ${difficulty}/${totalChapters}
-${buildTierInstructions(tierInfo)}
-${conceptTitle ? `Test this concept: "${conceptTitle}"` : `Create a question about ${topic}.`}${excludeList}
+CHAPTER CONTEXT: ${chapterContext}
+DIFFICULTY LEVEL: ${difficulty}/${totalChapters} (1=easiest, 5=hardest)
 
-RULES:
-1. ${tier.questionStyle}
-2. 4 choices. ONLY ONE correct answer.
-3. Use simple Hong Kong examples if possible
-4. Keep it short
+RULES FOR QUESTION GENERATION:
+1. Test SPECIFIC FACTS, not definitions of the subject
+   ❌ BAD: "What is ${topic}?" / "Why do we study ${topic}?"
+   ✅ GOOD: Ask about specific dates, names, events, concepts within ${topic}
+
+2. Use CONTENT from the chapter context
+   - If chapter is about "Ancient Egypt", ask about pyramids, pharaohs, Nile River
+   - If chapter is about "World War II", ask about dates, leaders, battles
+   - If chapter is about "Photosynthesis", ask about chlorophyll, sunlight, glucose
+
+3. Difficulty scaling:
+   - Difficulty 1-2: Basic facts (names, dates, simple definitions)
+   - Difficulty 3: Understanding relationships (compare/contrast, cause-effect)
+   - Difficulty 4-5: Analysis (why did X happen, what was the impact)
+
+4. Answer choices must be:
+   - One clearly correct answer
+   - Three plausible distractors (wrong but related)
+   - No "trick" questions or obviously wrong answers
+
+5. Keep language simple for Hong Kong students (mix of English/Chinese acceptable)
 
 Return ONLY valid JSON (no markdown):
 {
-  "question": "Your question here?",
+  "question": "Specific factual question here?",
   "choices": [
-    {"text": "correct answer", "correct": true},
-    {"text": "wrong answer 1", "correct": false},
-    {"text": "wrong answer 2", "correct": false},
-    {"text": "wrong answer 3", "correct": false}
+    {"text": "Wrong answer 1", "correct": false},
+    {"text": "Correct answer", "correct": true},
+    {"text": "Wrong answer 2", "correct": false},
+    {"text": "Wrong answer 3", "correct": false}
   ],
-  "explanation": "Why the answer is correct (1 sentence, simple)"
-}`;
+  "explanation": "Brief educational explanation teaching the fact."
+}
+
+EXAMPLE for History, "Ancient Egypt", Difficulty 1:
+{
+  "question": "What was the main purpose of the pyramids in Ancient Egypt?",
+  "choices": [
+    {"text": "As shopping centers for traders", "correct": false},
+    {"text": "As tombs for pharaohs", "correct": true},
+    {"text": "As schools for scribes", "correct": false},
+    {"text": "As storage for farmers' grain", "correct": false}
+  ],
+  "explanation": "The pyramids were built as elaborate tombs for pharaohs (kings) to help them reach the afterlife. The Great Pyramid of Giza was built for Pharaoh Khufu around 2560 BCE."
+}
+
+IMPORTANT: 
+- Do NOT ask "What is ${topic}?" or meta-questions about learning
+- ALWAYS ask about specific facts, events, people, or concepts within ${topic}
+- Make the explanation teach something substantive
+${excludeList}
+
+Generate the question now:`;
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
-      maxTokens: 800,
+      maxTokens: 1000,
       useThinking: false
     });
     
