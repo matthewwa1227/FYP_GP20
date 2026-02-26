@@ -302,7 +302,7 @@ Return ONLY valid JSON (no markdown):
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
       maxTokens: 800,
-      useThinking: true
+      useThinking: false
     });
     
     console.log('📖 Story intro raw response:', response?.substring(0, 100) + '...');
@@ -380,7 +380,7 @@ ${formatInstructions[sceneType] || formatInstructions.narrative}`;
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
       maxTokens: 600,
-      useThinking: true
+      useThinking: false
     });
     
     const parsed = parseJSON(response);
@@ -468,7 +468,7 @@ Return ONLY valid JSON (no markdown):
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
       maxTokens: 1000,
-      useThinking: true
+      useThinking: false
     });
     
     const parsed = parseJSON(response);
@@ -541,7 +541,7 @@ Return ONLY valid JSON (no markdown):
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
       maxTokens: 800,
-      useThinking: true
+      useThinking: false
     });
     
     const parsed = parseJSON(response);
