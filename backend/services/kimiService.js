@@ -500,7 +500,7 @@ function getDefaultLesson(topic, chapter) {
 }
 
 // ============================================
-// STORY QUEST - QUESTION GENERATION (Educational Content)
+// STORY QUEST - QUESTION GENERATION (Strict Factual Content)
 // ============================================
 async function generateStoryQuestion(topic, difficulty, questionType = 'multiple_choice', previousQuestions = [], conceptTitle = null, tierInfo = null) {
   console.log(`❓ generateStoryQuestion called: ${topic}, difficulty ${difficulty}, concept: ${conceptTitle}, tier: ${tierInfo?.ageTier || 'default'}`);
@@ -514,78 +514,147 @@ async function generateStoryQuestion(topic, difficulty, questionType = 'multiple
       : '';
 
     const totalChapters = tierInfo?.totalChapters || 4;
-    const chapterContext = conceptTitle || `${topic} - Chapter ${difficulty}`;
+    const chapterTitle = conceptTitle || `${topic} - Chapter ${difficulty}`;
 
-    const prompt = `You are creating a quiz question for a Hong Kong secondary student (Form 1-3, ages 12-15) studying ${topic.toUpperCase()}.
+    // Map chapter titles to specific content themes
+    const chapterContentMap = {
+      'The Beginning': 'introduction to the subject, basic concepts, early discoveries',
+      'First Trials': 'early civilizations, foundational events, first experiments',
+      'The Challenge': 'major conflicts, difficult problems, advanced concepts',
+      'Final Confrontation': 'climax events, modern applications, synthesis of knowledge',
+      'Ancient Egypt': 'pharaohs, pyramids, Nile River, mummification, hieroglyphics',
+      'World War II': '1939-1945, Hitler, Churchill, D-Day, Pearl Harbor, atomic bomb',
+      'Origins of Civilization': 'Mesopotamia, Egypt, Indus Valley, writing, agriculture',
+      'The Roman Empire': 'Caesar, Colosseum, legions, fall of Rome, gladiators',
+      'Renaissance': 'Leonardo da Vinci, Michelangelo, Florence, art, science rebirth',
+      'Industrial Revolution': 'steam engine, factories, trains, urbanization, 1760-1840'
+    };
+    
+    const chapterContent = chapterContentMap[chapterTitle] || `${topic} fundamentals`;
 
-CHAPTER CONTEXT: ${chapterContext}
-DIFFICULTY LEVEL: ${difficulty}/${totalChapters} (1=easiest, 5=hardest)
+    const prompt = `You are writing a quiz question for Hong Kong secondary students (Form 1-3, ages 12-15).
 
-RULES FOR QUESTION GENERATION:
-1. Test SPECIFIC FACTS, not definitions of the subject
-   ❌ BAD: "What is ${topic}?" / "Why do we study ${topic}?"
-   ✅ GOOD: Ask about specific dates, names, events, concepts within ${topic}
+CHAPTER: ${chapterTitle}
+SUBJECT: ${topic}
+CHAPTER CONTENT INCLUDES: ${chapterContent}
+DIFFICULTY: ${difficulty}/5
 
-2. Use CONTENT from the chapter context
-   - If chapter is about "Ancient Egypt", ask about pyramids, pharaohs, Nile River
-   - If chapter is about "World War II", ask about dates, leaders, battles
-   - If chapter is about "Photosynthesis", ask about chlorophyll, sunlight, glucose
+🚫 STRICT FORBIDDEN LIST - NEVER VIOLATE THESE:
+1. NEVER ask "What is ${topic}?" or "What is history/science/math?"
+2. NEVER ask "Why study ${topic}?" or "Why is ${topic} important?"
+3. NEVER ask about "key concepts" or "main ideas" of ${topic}
+4. NEVER use these answers: "Understanding fundamentals", "Practice every day", "Study hard", "Never give up"
+5. NEVER ask about learning methods or study strategies
 
-3. Difficulty scaling:
-   - Difficulty 1-2: Basic facts (names, dates, simple definitions)
-   - Difficulty 3: Understanding relationships (compare/contrast, cause-effect)
-   - Difficulty 4-5: Analysis (why did X happen, what was the impact)
+✅ REQUIRED - YOUR QUESTION MUST:
+1. Ask about SPECIFIC people, dates, events, or places from the chapter content
+2. Have answers that are REAL FACTS (names, years, places, objects)
+3. Be answerable based ONLY on the chapter content listed above
+4. Teach actual subject knowledge
 
-4. Answer choices must be:
-   - One clearly correct answer
-   - Three plausible distractors (wrong but related)
-   - No "trick" questions or obviously wrong answers
+📚 EXAMPLES OF GOOD QUESTIONS:
 
-5. Keep language simple for Hong Kong students (mix of English/Chinese acceptable)
+History Chapter "Ancient Egypt":
+Q: "Which river was essential for farming in Ancient Egypt?"
+A: Nile River / Amazon / Mississippi / Thames
 
-Return ONLY valid JSON (no markdown):
+History Chapter "World War II":  
+Q: "In what year did World War II begin?"
+A: 1939 / 1914 / 1945 / 1936
+
+Science Chapter "Photosynthesis":
+Q: "What green substance in plants absorbs sunlight?"
+A: Chlorophyll / Glucose / Oxygen / Carbon dioxide
+
+Math Chapter "Geometry":
+Q: "How many degrees are in a triangle?"
+A: 180 / 90 / 360 / 270
+
+YOUR QUESTION for "${chapterTitle}" (${topic}):
+- Must test: ${chapterContent}
+- Difficulty ${difficulty}: ${difficulty <= 2 ? 'Basic fact (what/who/when)' : difficulty <= 4 ? 'Understanding (how/why)' : 'Analysis (compare/evaluate)'}
+
+OUTPUT VALID JSON ONLY:
 {
-  "question": "Specific factual question here?",
+  "question": "Your specific factual question here?",
   "choices": [
-    {"text": "Wrong answer 1", "correct": false},
-    {"text": "Correct answer", "correct": true},
-    {"text": "Wrong answer 2", "correct": false},
-    {"text": "Wrong answer 3", "correct": false}
+    {"text": "Wrong fact", "correct": false},
+    {"text": "Correct fact", "correct": true},
+    {"text": "Wrong fact", "correct": false},
+    {"text": "Wrong fact", "correct": false}
   ],
-  "explanation": "Brief educational explanation teaching the fact."
+  "explanation": "2-3 sentences explaining the correct answer with educational value."
 }
 
-EXAMPLE for History, "Ancient Egypt", Difficulty 1:
-{
-  "question": "What was the main purpose of the pyramids in Ancient Egypt?",
-  "choices": [
-    {"text": "As shopping centers for traders", "correct": false},
-    {"text": "As tombs for pharaohs", "correct": true},
-    {"text": "As schools for scribes", "correct": false},
-    {"text": "As storage for farmers' grain", "correct": false}
-  ],
-  "explanation": "The pyramids were built as elaborate tombs for pharaohs (kings) to help them reach the afterlife. The Great Pyramid of Giza was built for Pharaoh Khufu around 2560 BCE."
-}
+⚠️ IF YOU GENERATE A META-QUESTION ABOUT STUDYING, IT WILL BE REJECTED.
+⚠️ IF ANSWERS INCLUDE "FUNDAMENTALS", "PRACTICE", "STUDYING", IT WILL BE REJECTED.
 
-IMPORTANT: 
-- Do NOT ask "What is ${topic}?" or meta-questions about learning
-- ALWAYS ask about specific facts, events, people, or concepts within ${topic}
-- Make the explanation teach something substantive
-${excludeList}
-
-Generate the question now:`;
+Generate a VALID question now:${excludeList}`;
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
-      maxTokens: 1000,
+      maxTokens: 1200,
       useThinking: false
     });
     
     const parsed = parseJSON(response);
 
+    // Validate the question is not a meta-question
+    const isValidQuestion = (q) => {
+      if (!q || typeof q !== 'string') return false;
+      const lowerQ = q.toLowerCase();
+      
+      // Reject meta-questions
+      const forbiddenPatterns = [
+        'what is history',
+        'what is science',
+        'what is math',
+        'what is mathematics',
+        'what is geography',
+        'key concept',
+        'why study',
+        'why is it important',
+        'how to learn',
+        'best way to',
+        'fundamentals of',
+        'importance of'
+      ];
+      
+      for (const pattern of forbiddenPatterns) {
+        if (lowerQ.includes(pattern)) {
+          console.log(`🚫 REJECTED meta-question: "${q}"`);
+          return false;
+        }
+      }
+      
+      // Reject answers about studying methods
+      if (parsed.choices && Array.isArray(parsed.choices)) {
+        const forbiddenAnswers = ['fundamentals', 'practice', 'study hard', 'never give up', 'understanding'];
+        for (const choice of parsed.choices) {
+          if (choice.text) {
+            const lowerText = choice.text.toLowerCase();
+            for (const forbidden of forbiddenAnswers) {
+              if (lowerText.includes(forbidden)) {
+                console.log(`🚫 REJECTED answer with "${forbidden}": "${choice.text}"`);
+                return false;
+              }
+            }
+          }
+        }
+      }
+      
+      return true;
+    };
+
     if (parsed && parsed.choices && Array.isArray(parsed.choices) && parsed.choices.length === 4) {
+      // Validate question is not a meta-question
+      if (!isValidQuestion(parsed.question)) {
+        console.log('⚠️ Generated question was meta-question, using fallback');
+        return getDefaultQuestion(topic, difficulty, chapterTitle);
+      }
+      
       const shuffledChoices = [...parsed.choices].sort(() => Math.random() - 0.5);
       
-      console.log('✅ Question generated:', parsed.question?.substring(0, 50) + '...');
+      console.log('✅ VALID question generated:', parsed.question?.substring(0, 60) + '...');
       
       return {
         type: 'question',
@@ -597,24 +666,184 @@ Generate the question now:`;
     }
 
     console.log('⚠️ Using default question');
-    return getDefaultQuestion(topic, difficulty);
+    return getDefaultQuestion(topic, difficulty, chapterTitle);
   } catch (error) {
     console.error('❌ Question generation error:', error.message);
-    return getDefaultQuestion(topic, difficulty);
+    return getDefaultQuestion(topic, difficulty, chapterTitle);
   }
 }
 
-function getDefaultQuestion(topic, difficulty) {
+// ============================================
+// FALLBACK QUESTIONS BY TOPIC (No meta-questions!)
+// ============================================
+function getDefaultQuestion(topic, difficulty, chapterTitle = '') {
+  const topicLower = topic.toLowerCase();
+  const chapterLower = chapterTitle.toLowerCase();
+  
+  // History fallbacks
+  if (topicLower.includes('history') || chapterLower.includes('ancient') || chapterLower.includes('war') || chapterLower.includes('empire')) {
+    const historyQuestions = [
+      {
+        text: 'Which ancient civilization is famous for building pyramids?',
+        choices: [
+          { text: 'The Romans', correct: false },
+          { text: 'The Ancient Egyptians', correct: true },
+          { text: 'The Greeks', correct: false },
+          { text: 'The Vikings', correct: false }
+        ],
+        explanation: 'The Ancient Egyptians built the pyramids as tombs for their pharaohs. The Great Pyramid of Giza was built around 2560 BCE.'
+      },
+      {
+        text: 'In what year did World War II end?',
+        choices: [
+          { text: '1939', correct: false },
+          { text: '1945', correct: true },
+          { text: '1918', correct: false },
+          { text: '1950', correct: false }
+        ],
+        explanation: 'World War II ended in 1945 when Germany surrendered in May and Japan surrendered in September after atomic bombs were dropped on Hiroshima and Nagasaki.'
+      },
+      {
+        text: 'Who was the first Emperor of Rome?',
+        choices: [
+          { text: 'Julius Caesar', correct: false },
+          { text: 'Augustus', correct: true },
+          { text: 'Nero', correct: false },
+          { text: 'Constantine', correct: false }
+        ],
+        explanation: 'Augustus (Octavian) became the first Roman Emperor in 27 BCE, marking the end of the Roman Republic and the beginning of the Roman Empire.'
+      },
+      {
+        text: 'Which river was crucial to the development of Ancient Egyptian civilization?',
+        choices: [
+          { text: 'The Tigris', correct: false },
+          { text: 'The Nile River', correct: true },
+          { text: 'The Amazon', correct: false },
+          { text: 'The Mississippi', correct: false }
+        ],
+        explanation: 'The Nile River was essential to Ancient Egypt. Its annual floods deposited rich soil for farming, and the river provided water, transportation, and food.'
+      }
+    ];
+    const q = historyQuestions[difficulty % historyQuestions.length];
+    return { type: 'question', ...q, choices: q.choices.sort(() => Math.random() - 0.5), xp: 20 + (difficulty * 10) };
+  }
+  
+  // Science fallbacks
+  if (topicLower.includes('science') || topicLower.includes('biology') || topicLower.includes('chemistry') || topicLower.includes('physics')) {
+    const scienceQuestions = [
+      {
+        text: 'What is the chemical symbol for water?',
+        choices: [
+          { text: 'O2', correct: false },
+          { text: 'H2O', correct: true },
+          { text: 'CO2', correct: false },
+          { text: 'NaCl', correct: false }
+        ],
+        explanation: 'Water is H2O - two hydrogen atoms bonded to one oxygen atom. This molecular structure gives water its unique properties.'
+      },
+      {
+        text: 'What gas do plants absorb from the atmosphere during photosynthesis?',
+        choices: [
+          { text: 'Oxygen', correct: false },
+          { text: 'Carbon dioxide', correct: true },
+          { text: 'Nitrogen', correct: false },
+          { text: 'Hydrogen', correct: false }
+        ],
+        explanation: 'Plants absorb carbon dioxide (CO2) from the air and use sunlight to convert it into glucose (food) and release oxygen.'
+      },
+      {
+        text: 'What is the powerhouse of the cell?',
+        choices: [
+          { text: 'Nucleus', correct: false },
+          { text: 'Mitochondria', correct: true },
+          { text: 'Ribosome', correct: false },
+          { text: 'Cell membrane', correct: false }
+        ],
+        explanation: 'Mitochondria are called the powerhouse of the cell because they convert glucose into ATP (energy) that the cell can use.'
+      }
+    ];
+    const q = scienceQuestions[difficulty % scienceQuestions.length];
+    return { type: 'question', ...q, choices: q.choices.sort(() => Math.random() - 0.5), xp: 20 + (difficulty * 10) };
+  }
+  
+  // Mathematics fallbacks
+  if (topicLower.includes('math') || topicLower.includes('mathematics') || topicLower.includes('geometry') || topicLower.includes('algebra')) {
+    const mathQuestions = [
+      {
+        text: 'What is the value of Pi (π) to two decimal places?',
+        choices: [
+          { text: '3.12', correct: false },
+          { text: '3.14', correct: true },
+          { text: '3.16', correct: false },
+          { text: '3.18', correct: false }
+        ],
+        explanation: 'Pi (π) is approximately 3.14159... It represents the ratio of a circle\'s circumference to its diameter.'
+      },
+      {
+        text: 'How many degrees are in a right angle?',
+        choices: [
+          { text: '45', correct: false },
+          { text: '90', correct: true },
+          { text: '180', correct: false },
+          { text: '360', correct: false }
+        ],
+        explanation: 'A right angle is exactly 90 degrees. This forms a square corner like the corner of a piece of paper.'
+      },
+      {
+        text: 'What is the area of a rectangle with length 5 and width 3?',
+        choices: [
+          { text: '8', correct: false },
+          { text: '15', correct: true },
+          { text: '16', correct: false },
+          { text: '12', correct: false }
+        ],
+        explanation: 'Area of a rectangle = length × width = 5 × 3 = 15 square units.'
+      }
+    ];
+    const q = mathQuestions[difficulty % mathQuestions.length];
+    return { type: 'question', ...q, choices: q.choices.sort(() => Math.random() - 0.5), xp: 20 + (difficulty * 10) };
+  }
+  
+  // Geography fallbacks
+  if (topicLower.includes('geography') || topicLower.includes('geography')) {
+    const geoQuestions = [
+      {
+        text: 'What is the longest river in the world?',
+        choices: [
+          { text: 'Amazon River', correct: false },
+          { text: 'Nile River', correct: true },
+          { text: 'Yangtze River', correct: false },
+          { text: 'Mississippi River', correct: false }
+        ],
+        explanation: 'The Nile River in Africa is generally considered the longest river at about 6,650 km.'
+      },
+      {
+        text: 'Which continent is the largest by land area?',
+        choices: [
+          { text: 'Africa', correct: false },
+          { text: 'Asia', correct: true },
+          { text: 'North America', correct: false },
+          { text: 'Europe', correct: false }
+        ],
+        explanation: 'Asia is the largest continent, covering about 30% of Earth\'s land area.'
+      }
+    ];
+    const q = geoQuestions[difficulty % geoQuestions.length];
+    return { type: 'question', ...q, choices: q.choices.sort(() => Math.random() - 0.5), xp: 20 + (difficulty * 10) };
+  }
+  
+  // Generic fallback (last resort - still factual!)
+  console.log(`⚠️ Using generic fallback for topic: ${topic}`);
   return {
     type: 'question',
-    text: `What is the best way to learn ${topic}?`,
+    text: `Which of these is most associated with ${topic}?`,
     choices: [
-      { text: 'Practice every day', correct: true },
-      { text: 'Study only before tests', correct: false },
-      { text: 'Never review', correct: false },
-      { text: 'Skip hard parts', correct: false }
+      { text: 'Paris', correct: false },
+      { text: 'Einstein', correct: false },
+      { text: topic === 'History' ? 'Ancient Rome' : topic === 'Science' ? 'The atom' : 'The number 7', correct: true },
+      { text: 'Shakespeare', correct: false }
     ].sort(() => Math.random() - 0.5),
-    explanation: 'Daily practice helps you remember and understand better.',
+    explanation: `This question tests basic knowledge about ${topic}.`,
     xp: 20 + (difficulty * 10)
   };
 }
