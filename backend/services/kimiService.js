@@ -502,8 +502,10 @@ function getDefaultLesson(topic, chapter) {
 // ============================================
 // STORY QUEST - QUESTION GENERATION (Strict Factual Content)
 // ============================================
-async function generateStoryQuestion(topic, difficulty, questionType = 'multiple_choice', previousQuestions = [], conceptTitle = null, tierInfo = null) {
-  console.log(`❓ generateStoryQuestion called: ${topic}, difficulty ${difficulty}, concept: ${conceptTitle}, tier: ${tierInfo?.ageTier || 'default'}`);
+async function generateStoryQuestion(topic, difficulty, questionType = 'multiple_choice', previousQuestions = [], conceptTitle = null, tierInfo = null, subject = null) {
+  // Determine actual subject (use passed subject or infer from topic)
+  const actualSubject = subject || topic;
+  console.log(`❓ generateStoryQuestion called: ${topic} (Subject: ${actualSubject}), difficulty ${difficulty}, concept: ${conceptTitle}, tier: ${tierInfo?.ageTier || 'default'}`);
   console.log(`   Previous questions count: ${previousQuestions.length}`);
   
   const tier = getTierPrompt(tierInfo);
@@ -516,12 +518,27 @@ async function generateStoryQuestion(topic, difficulty, questionType = 'multiple
     const totalChapters = tierInfo?.totalChapters || 4;
     const chapterTitle = conceptTitle || `${topic} - Chapter ${difficulty}`;
 
-    // Map chapter titles to specific content themes
+    // SUBJECT-SPECIFIC chapter content mapping
     const chapterContentMap = {
-      'The Beginning': 'introduction to the subject, basic concepts, early discoveries',
-      'First Trials': 'early civilizations, foundational events, first experiments',
-      'The Challenge': 'major conflicts, difficult problems, advanced concepts',
-      'Final Confrontation': 'climax events, modern applications, synthesis of knowledge',
+      // Mathematics chapters
+      'Mathematics:The Beginning': 'number systems, counting, Hindu-Arabic numerals, zero, place value, natural numbers',
+      'Mathematics:First Trials': 'basic operations, addition, subtraction, multiplication, division',
+      'Mathematics:The Challenge': 'equations, variables, solving for x, algebraic expressions',
+      'Mathematics:Final Confrontation': 'advanced problems, word problems, applications',
+      
+      // History chapters  
+      'History:The Beginning': 'prehistory, early humans, first civilizations, Stone Age, archaeology',
+      'History:First Trials': 'ancient civilizations, Egypt, Mesopotamia, Indus Valley, pharaohs',
+      'History:The Challenge': 'classical empires, Rome, Greece, major conflicts, wars',
+      'History:Final Confrontation': 'modern history, revolutions, world wars, independence',
+      
+      // Science chapters
+      'Science:The Beginning': 'scientific method, observation, hypothesis, experiments, curiosity',
+      'Science:First Trials': 'basic physics, forces, motion, simple machines, energy',
+      'Science:The Challenge': 'chemistry basics, atoms, elements, compounds, reactions',
+      'Science:Final Confrontation': 'advanced concepts, applications, modern science, discoveries',
+      
+      // Specific topics
       'Ancient Egypt': 'pharaohs, pyramids, Nile River, mummification, hieroglyphics',
       'World War II': '1939-1945, Hitler, Churchill, D-Day, Pearl Harbor, atomic bomb',
       'Origins of Civilization': 'Mesopotamia, Egypt, Indus Valley, writing, agriculture',
@@ -530,29 +547,43 @@ async function generateStoryQuestion(topic, difficulty, questionType = 'multiple
       'Industrial Revolution': 'steam engine, factories, trains, urbanization, 1760-1840'
     };
     
-    const chapterContent = chapterContentMap[chapterTitle] || `${topic} fundamentals`;
+    // Look up subject-specific content first, then generic
+    const subjectKey = `${actualSubject}:${chapterTitle}`;
+    const chapterContent = chapterContentMap[subjectKey] || chapterContentMap[chapterTitle] || `${actualSubject} fundamentals`;
+    
+    // Subject-specific forbidden topics
+    const forbiddenMap = {
+      'Mathematics': 'Big Bang, universe, galaxy, atoms, molecules, ancient civilizations, pharaohs, wars, history events',
+      'History': 'equations, formulas, atoms, molecules, calculations, theorems, geometry, algebra',
+      'Science': 'historical dates without scientific context, ancient pharaohs, wars, equations without context'
+    };
+    const forbiddenTopics = forbiddenMap[actualSubject] || 'unrelated topics';
 
     const prompt = `You are writing a quiz question for Hong Kong secondary students (Form 1-3, ages 12-15).
 
-CHAPTER: ${chapterTitle}
-SUBJECT: ${topic}
-CHAPTER CONTENT INCLUDES: ${chapterContent}
-DIFFICULTY: ${difficulty}/5
+🎯 CRITICAL CONTEXT:
+- SUBJECT: ${actualSubject.toUpperCase()} (STAY FOCUSED ON THIS!)
+- CHAPTER: ${chapterTitle}
+- CHAPTER CONTENT INCLUDES: ${chapterContent}
+- DIFFICULTY: ${difficulty}/5
+
+🚫 FORBIDDEN FOR ${actualSubject.toUpperCase()}: NEVER mention ${forbiddenTopics}
 
 🚫 STRICT FORBIDDEN LIST - NEVER VIOLATE THESE:
-1. NEVER ask "What is ${topic}?" or "What is history/science/math?"
-2. NEVER ask "Why study ${topic}?" or "Why is ${topic} important?"
-3. NEVER ask about "key concepts" or "main ideas" of ${topic}
+1. NEVER ask "What is ${actualSubject}?" or "What is history/science/math?"
+2. NEVER ask "Why study ${actualSubject}?" or "Why is ${actualSubject} important?"
+3. NEVER ask about "key concepts" or "main ideas" of ${actualSubject}
 4. NEVER use these answers: "Understanding fundamentals", "Practice every day", "Study hard", "Never give up"
 5. NEVER ask about learning methods or study strategies
+6. NEVER ask about topics unrelated to ${actualSubject}
 
 ✅ REQUIRED - YOUR QUESTION MUST:
-1. Ask about SPECIFIC people, dates, events, or places from the chapter content
-2. Have answers that are REAL FACTS (names, years, places, objects)
+1. Ask about SPECIFIC ${actualSubject} content: ${chapterContent}
+2. Have answers that are REAL FACTS (names, years, places, numbers, objects)
 3. Be answerable based ONLY on the chapter content listed above
-4. Teach actual subject knowledge
+4. Teach actual ${actualSubject} knowledge
 
-📚 EXAMPLES OF GOOD QUESTIONS:
+📚 EXAMPLES OF GOOD QUESTIONS BY SUBJECT:
 
 History Chapter "Ancient Egypt":
 Q: "Which river was essential for farming in Ancient Egypt?"
@@ -570,26 +601,27 @@ Math Chapter "Geometry":
 Q: "How many degrees are in a triangle?"
 A: 180 / 90 / 360 / 270
 
-YOUR QUESTION for "${chapterTitle}" (${topic}):
+YOUR QUESTION for "${chapterTitle}" (${actualSubject}):
 - Must test: ${chapterContent}
 - Difficulty ${difficulty}: ${difficulty <= 2 ? 'Basic fact (what/who/when)' : difficulty <= 4 ? 'Understanding (how/why)' : 'Analysis (compare/evaluate)'}
 
 OUTPUT VALID JSON ONLY:
 {
-  "question": "Your specific factual question here?",
+  "question": "Your specific ${actualSubject} question here?",
   "choices": [
     {"text": "Wrong fact", "correct": false},
     {"text": "Correct fact", "correct": true},
     {"text": "Wrong fact", "correct": false},
     {"text": "Wrong fact", "correct": false}
   ],
-  "explanation": "2-3 sentences explaining the correct answer with educational value."
+  "explanation": "2-3 sentences explaining the ${actualSubject} answer."
 }
 
 ⚠️ IF YOU GENERATE A META-QUESTION ABOUT STUDYING, IT WILL BE REJECTED.
 ⚠️ IF ANSWERS INCLUDE "FUNDAMENTALS", "PRACTICE", "STUDYING", IT WILL BE REJECTED.
+⚠️ IF CONTENT IS NOT ABOUT ${actualSubject}, IT WILL BE REJECTED.
 
-Generate a VALID question now:${excludeList}`;
+Generate a VALID ${actualSubject} question now:${excludeList}`;
 
     const response = await sendMessageToKimi([{ role: 'user', content: prompt }], { 
       maxTokens: 1200,

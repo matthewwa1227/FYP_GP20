@@ -87,6 +87,9 @@ app.use('/api/social', require('./routes/social'));
 // Schedule Optimizer
 app.use('/api/schedule-optimizer', require('./routes/scheduleOptimizer'));
 
+// Exercise Generator (Printable Worksheets)
+app.use('/api/exercises', require('./routes/exercises'));
+
 // ============================================
 // NEW: ROOT API ENDPOINT (FIXES YOUR /api ISSUE)
 // ============================================

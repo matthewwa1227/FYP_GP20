@@ -454,13 +454,14 @@ router.post('/question', authenticateToken, checkScheduleLimits, async (req, res
   console.log('❓ /question endpoint hit (schedule-aware)');
 
   try {
-    const { topic, difficulty, questionType, previousQuestions, conceptTitle } = req.body;
+    const { topic, subject, chapterTitle, difficulty, questionType, previousQuestions, conceptTitle } = req.body;
 
     if (!topic) {
       return res.status(400).json({ error: 'Topic is required' });
     }
 
-    console.log(`❓ Generating question for ${topic}, difficulty ${difficulty || 1}`);
+    const actualSubject = subject || topic;
+    console.log(`❓ Generating question for ${topic} (Subject: ${actualSubject}), difficulty ${difficulty || 1}`);
 
     const tierInfo = getTierInfo(req.user);
     
@@ -469,8 +470,9 @@ router.post('/question', authenticateToken, checkScheduleLimits, async (req, res
       difficulty || 1,
       questionType || 'multiple_choice',
       previousQuestions || [],
-      conceptTitle,
-      tierInfo
+      conceptTitle || chapterTitle,
+      tierInfo,
+      actualSubject // Pass subject context
     );
 
     await logToActiveSession(req.user.id, 'question', 0);
