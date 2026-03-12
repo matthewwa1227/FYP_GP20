@@ -86,7 +86,6 @@ const processDocument = async (filePath, mimeType) => {
       
     } else if (mimeType === 'application/pdf' || filePath.endsWith('.pdf')) {
       // For PDF, we'll extract text using a simple approach
-      // In production, you'd use pdf-parse library
       content = await extractPdfText(filePath);
       
     } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || 
@@ -97,8 +96,13 @@ const processDocument = async (filePath, mimeType) => {
     } else if (mimeType === 'text/markdown' || filePath.endsWith('.md')) {
       content = await fs.readFile(filePath, 'utf-8');
       
+    } else if (mimeType?.startsWith('image/') || 
+               filePath.match(/\.(jpg|jpeg|png|webp|gif)$/i)) {
+      // For images, use OCR (placeholder)
+      content = await extractImageText(filePath);
+      
     } else {
-      throw new Error('Unsupported file type');
+      throw new Error('Unsupported file type: ' + mimeType);
     }
     
     // Clean and limit content
@@ -131,31 +135,53 @@ const processDocument = async (filePath, mimeType) => {
 
 // Simple PDF text extraction (placeholder - would use pdf-parse in production)
 const extractPdfText = async (filePath) => {
-  // In production, use: const pdfParse = require('pdf-parse');
-  // For now, return a message
-  return `[PDF Document Content Placeholder - In production, install pdf-parse library]
-  
-Document: ${path.basename(filePath)}
+  // For now, read as text in case it's a text-based PDF
+  // In production: npm install pdf-parse
+  try {
+    const buffer = await fs.readFile(filePath);
+    // Try to extract text from PDF buffer
+    const text = buffer.toString('utf-8');
+    // PDFs have binary data, but text might be extractable
+    const cleanText = text.replace(/[^\x20-\x7E\n\r\t]/g, ' ').trim();
+    if (cleanText.length > 100) {
+      return cleanText.substring(0, 10000);
+    }
+    
+    return `[PDF Document: ${path.basename(filePath)}]
 
-To enable PDF processing:
-1. npm install pdf-parse
-2. Update this function to use pdf-parse library
+Note: PDF text extraction requires 'pdf-parse' library.
+To enable: npm install pdf-parse
 
-The content would be extracted here for AI processing.`;
+For now, please use TXT format or paste the exercise text directly.`;
+  } catch (error) {
+    return `[PDF Document: ${path.basename(filePath)}]`;
+  }
 };
 
 // Simple DOCX text extraction (placeholder)
 const extractDocxText = async (filePath) => {
-  // In production, use: const mammoth = require('mammoth');
-  return `[DOCX Document Content Placeholder - In production, install mammoth library]
-  
-Document: ${path.basename(filePath)}
+  // DOCX files are ZIP archives with XML inside
+  // In production: npm install mammoth
+  return `[DOCX Document: ${path.basename(filePath)}]
 
-To enable DOCX processing:
-1. npm install mammoth
-2. Update this function to use mammoth library
+Note: DOCX text extraction requires 'mammoth' library.
+To enable: npm install mammoth
 
-The content would be extracted here for AI processing.`;
+For now, please convert to TXT format or paste the exercise text directly.`;
+};
+
+// Image OCR placeholder
+const extractImageText = async (filePath) => {
+  // In production, use Tesseract.js or similar OCR library
+  // For now, return a message indicating OCR is needed
+  return `[Image Document: ${path.basename(filePath)}]
+
+Note: Image text extraction requires OCR (Optical Character Recognition).
+To enable image support, install: npm install tesseract.js
+
+For now, please:
+1. Type out the exercises manually in the text area, OR
+2. Use a PDF or text document instead`;
 };
 
 // ============================================
