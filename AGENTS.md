@@ -12,33 +12,44 @@ This is a Final Year Project (FYP GP20) for the Higher Diploma in Software Engin
 - **Teachers**: Manage classes, create challenges, verify study sessions, and track student analytics
 - **AI Features**: Age-appropriate tutoring with content tailored to Hong Kong curriculum via Kimi K2.5
 
+
 ---
 
 ## Technology Stack
 
 ### Backend
-- **Runtime**: Node.js 18+ (Express.js 4.x)
-- **Database**: PostgreSQL 15+ (hosted on Supabase)
-- **Authentication**: JWT (JSON Web Tokens) with 24h expiry
-- **Password Hashing**: bcryptjs (10 salt rounds)
-- **AI Integration**: Kimi API (Moonshot AI) via OpenAI SDK
-- **CORS**: Enabled for cross-origin requests
-- **File Uploads**: Multer for document processing
+| Component | Technology | Version |
+|-----------|------------|---------|
+| Runtime | Node.js | 18+ |
+| Framework | Express.js | 4.x |
+| Database | PostgreSQL | 15+ (Supabase hosted) |
+| Authentication | JWT | jsonwebtoken 9.x |
+| Password Hashing | bcryptjs | 3.0.3 |
+| AI Integration | OpenAI SDK | Kimi API (Moonshot AI) |
+| CORS | cors | 2.8.5 |
+| File Uploads | multer | 2.0.2 |
+| Validation | express-validator | 7.0.1 |
+| HTTP Client | axios | 1.13.x |
+| Web Scraping | cheerio | 1.2.0 |
+| DB Client | pg | 8.16.3 |
 
 ### Frontend
-- **Framework**: React 19+ (Create React App)
-- **Routing**: React Router v7
-- **Styling**: Tailwind CSS 3.4+ with custom pixel-art theme
-- **Animation**: Framer Motion
-- **Icons**: Lucide React
-- **Charts**: Recharts for analytics
-- **HTTP Client**: Axios with interceptors
+| Component | Technology | Version |
+|-----------|------------|---------|
+| Framework | React | 19+ |
+| Build Tool | Create React App | 5.0.1 |
+| Routing | React Router DOM | 7.x |
+| Styling | Tailwind CSS | 3.4+ |
+| Animation | Framer Motion | 12.x |
+| Icons | Lucide React | 0.555.0 |
+| Charts | Recharts | 3.5.1 |
+| HTTP Client | Axios | 1.13.x |
 
 ### Database
 - **Type**: PostgreSQL 15+ (Supabase managed)
 - **Connection**: `pg` library with connection pooling
-- **SSL**: Required for Supabase connections
-- **Migrations**: Sequential SQL files in `/migrations`
+- **SSL**: Required for Supabase connections (`rejectUnauthorized: false`)
+- **Migrations**: Sequential SQL files in `/backend/migrations`
 
 ---
 
@@ -46,88 +57,109 @@ This is a Final Year Project (FYP GP20) for the Higher Diploma in Software Engin
 
 ```
 FYP_GP20/
-├── backend/                    # Express.js API server
-│   ├── routes/                 # API route handlers
-│   │   ├── auth.js            # Authentication (register/login/onboarding)
-│   │   ├── sessions.js        # Study session management
-│   │   ├── achievements.js    # Achievement system
-│   │   ├── tasks.js           # Task management
-│   │   ├── ai.js              # Study Buddy AI chat
-│   │   ├── aiStory.js         # AI schedule generation
-│   │   ├── storyquest.js      # Story Quest RPG endpoints
-│   │   ├── schedule.js        # Study schedule generator
-│   │   ├── scheduleOptimizer.js # AI-optimized schedules
-│   │   ├── progress.js        # Progress tracking & goals
-│   │   ├── rewards.js         # Parent-teacher rewards
-│   │   ├── teacher.js         # Teacher module (classes, analytics)
-│   │   ├── social.js          # Study groups, friends, challenges
-│   │   ├── family.js          # Parent-child linking
-│   │   ├── leaderboard.js     # Leaderboard data
-│   │   ├── dashboard.js       # Dashboard analytics
-│   │   ├── revision.js        # Document-based learning
-│   │   ├── exercises.js       # Printable worksheet generator
-│   │   └── student.js         # Student profile
-│   ├── controllers/            # Business logic
-│   │   ├── aiController.js    # AI orchestration
-│   │   └── revisionController.js # Document processing
-│   ├── middleware/             # Express middleware
-│   │   ├── auth.js            # JWT authentication (authenticateToken, optionalAuth)
-│   │   └── scheduleGuard.js   # Schedule access control
-│   ├── models/                 # Data models
-│   │   └── Task.js            # Task model
-│   ├── services/               # External service integrations
-│   │   ├── kimiService.js     # Kimi AI service with tier-aware prompts
-│   │   └── contentService.js  # PDF/DOCX/URL content extraction
-│   ├── db/                     # Database
-│   │   └── connection.js      # PostgreSQL connection pool with timeouts
-│   ├── migrations/             # SQL schema migrations (001-013)
-│   │   ├── 001_initial_schema.sql      # Core tables
-│   │   ├── 002_add_parents.sql         # Parent relationships
-│   │   ├── 003_ai.sql                  # AI conversations
-│   │   ├── 004_Task.sql                # Task management
-│   │   ├── 005_tutor_sessions.sql      # AI tutoring
-│   │   ├── 007_procrastination_prophecy.sql # Hero/Shadow gamification
-│   │   ├── 008_revision_mode.sql       # Document revision
-│   │   ├── 011_comprehensive_features.sql # Goals, rewards, social, analytics
-│   │   └── 012_fix_role_constraint.sql # Add 'teacher' role
-│   ├── utils/                  # Utility functions
-│   ├── server.js              # Express app entry point
-│   └── .env                   # Environment variables (NEVER COMMIT)
-├── frontend/                   # Main React application
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── auth/          # Login.jsx, Register.jsx
-│   │   │   ├── dashboard/     # Dashboard.jsx, CourseCard.jsx
-│   │   │   ├── StudyTimer/    # StudyTimer.jsx (Pomodoro timer)
-│   │   │   ├── Achievements/  # Achievements.jsx, AchievementCard.jsx
-│   │   │   ├── Tasks/         # Tasks.jsx
-│   │   │   ├── StudyBuddy/    # StudyBuddy.jsx (AI chat)
-│   │   │   ├── AITutor/       # StoryQuestAI.jsx, RevisionMode.jsx
-│   │   │   ├── ScheduleGenerator/  # ScheduleGenerator.jsx
-│   │   │   ├── ScheduleOptimizer/  # Schedule optimizer UI
-│   │   │   ├── Progress/      # ProgressDashboard.jsx
-│   │   │   ├── Teacher/       # TeacherDashboard.jsx, TeacherLayout.jsx
-│   │   │   ├── Social/        # SocialHub.jsx
-│   │   │   ├── ExerciseGenerator/  # ExerciseGenerator.jsx
-│   │   │   ├── leaderboard/   # Leaderboard.jsx
-│   │   │   ├── profile/       # Profile.jsx
-│   │   │   ├── parent/        # ParentDashboard.jsx, LinkStudentPage.jsx
-│   │   │   ├── portal/        # ParentPortal.jsx, ConnectParent.jsx, FamilyPortal.jsx
-│   │   │   └── shared/        # Navbar.jsx, PixelButton.jsx, PixelCard.jsx
-│   │   ├── utils/
-│   │   │   ├── auth.js        # Frontend auth utilities
-│   │   │   └── api.js         # Axios API client with interceptors
-│   │   ├── App.js             # React router configuration
-│   │   └── index.js           # App entry point
-│   ├── tailwind.config.js     # Tailwind theme (pixel game style)
-│   └── package.json
-├── studyquest-app/            # Alternative/legacy React app (not actively used)
-├── Doc/                       # Project documentation
-│   ├── Project Plan.md
-│   ├── Table_Of_Content.md
-│   └── *.docx, *.pptx         # Reports and presentations
-└── Diagram/                   # Architecture diagrams
+�u�w�w backend/                    # Express.js API server
+�x   �u�w�w server.js              # Express app entry point
+�x   �u�w�w package.json           # backend dependencies
+�x   �u�w�w .env                   # Environment variables (NEVER COMMIT)
+�x   �x
+�x   �u�w�w routes/                # API route handlers
+�x   �x   �u�w�w auth.js           # Authentication (register/login/onboarding)
+�x   �x   �u�w�w sessions.js       # Study session management
+�x   �x   �u�w�w achievements.js   # Achievement system
+�x   �x   �u�w�w tasks.js          # Task management
+�x   �x   �u�w�w ai.js             # Study Buddy AI chat
+�x   �x   �u�w�w aiStory.js        # AI schedule generation
+�x   �x   �u�w�w storyquest.js     # Story Quest RPG endpoints
+�x   �x   �u�w�w schedule.js       # Study schedule generator
+�x   �x   �u�w�w scheduleOptimizer.js # AI-optimized schedules
+�x   �x   �u�w�w progress.js       # Progress tracking & goals
+�x   �x   �u�w�w rewards.js        # Parent-teacher rewards
+�x   �x   �u�w�w teacher.js        # Teacher module
+�x   �x   �u�w�w social.js         # Study groups, friends, challenges
+�x   �x   �u�w�w family.js         # Parent-child linking
+�x   �x   �u�w�w leaderboard.js    # Leaderboard data
+�x   �x   �u�w�w dashboard.js      # Dashboard analytics
+�x   �x   �u�w�w revision.js       # Document-based learning
+�x   �x   �u�w�w exercises.js      # Printable worksheet generator
+�x   �x   �|�w�w student.js        # Student profile
+�x   �x
+�x   �u�w�w controllers/           # Business logic
+�x   �x   �u�w�w aiController.js   # AI orchestration
+�x   �x   �|�w�w revisionController.js # Document processing
+�x   �x
+�x   �u�w�w middleware/            # Express middleware
+�x   �x   �u�w�w auth.js           # JWT authentication
+�x   �x   �|�w�w scheduleGuard.js  # Schedule access control
+�x   �x
+�x   �u�w�w services/              # External service integrations
+�x   �x   �u�w�w kimiService.js    # Kimi AI service with tier-aware prompts
+�x   �x   �|�w�w contentService.js # PDF/DOCX/URL content extraction
+�x   �x
+�x   �u�w�w models/                # Data models
+�x   �x   �|�w�w Task.js           # Task model
+�x   �x
+�x   �u�w�w db/                    # Database
+�x   �x   �|�w�w connection.js     # PostgreSQL connection pool
+�x   �x
+�x   �u�w�w migrations/            # SQL schema migrations
+�x   �x   �u�w�w 001_initial_schema.sql
+�x   �x   �u�w�w 002_add_parents.sql
+�x   �x   �u�w�w 003_ai.sql
+�x   �x   �u�w�w 004_Task.sql
+�x   �x   �u�w�w 005_tutor_sessions.sql
+�x   �x   �u�w�w 007_procrastination_prophecy.sql
+�x   �x   �u�w�w 008_revision_mode.sql
+�x   �x   �u�w�w 011_comprehensive_features.sql
+�x   �x   �u�w�w 012_fix_role_constraint.sql
+�x   �x   �|�w�w 013_ai_media.sql
+�x   �x
+�x   �|�w�w uploads/               # File upload storage
+�x       �|�w�w exercises/
+�x
+�u�w�w frontend/                  # Main React application
+�x   �u�w�w package.json          # Frontend dependencies
+�x   �u�w�w tailwind.config.js    # Tailwind theme (pixel game style)
+�x   �u�w�w postcss.config.js     # PostCSS configuration
+�x   �x
+�x   �u�w�w public/               # Static assets
+�x   �x
+�x   �|�w�w src/
+�x       �u�w�w App.js            # React router configuration
+�x       �u�w�w index.js          # App entry point
+�x       �u�w�w index.css         # Global styles (Press Start 2P font)
+�x       �x
+�x       �u�w�w components/
+�x       �x   �u�w�w auth/         # Login.jsx, Register.jsx
+�x       �x   �u�w�w dashboard/    # Dashboard.jsx, CourseCard.jsx
+�x       �x   �u�w�w StudyTimer/   # StudyTimer.jsx (Pomodoro timer)
+�x       �x   �u�w�w Achievements/ # achievements.jsx, AchievementCard.jsx
+�x       �x   �u�w�w tasks/        # tasks.jsx
+�x       �x   �u�w�w StudyBuddy/   # StudyBuddy.jsx (AI chat)
+�x       �x   �u�w�w AITutor/      # StoryQuestAI.jsx, RevisionMode.jsx
+�x       �x   �u�w�w ScheduleGenerator/
+�x       �x   �u�w�w ScheduleOptimizer/
+�x       �x   �u�w�w Progress/     # ProgressDashboard.jsx
+�x       �x   �u�w�w Teacher/      # TeacherDashboard.jsx, TeacherLayout.jsx
+�x       �x   �u�w�w Social/       # SocialHub.jsx
+�x       �x   �u�w�w ExerciseGenerator/
+�x       �x   �u�w�w leaderboard/  # Leaderboard.jsx
+�x       �x   �u�w�w profile/      # Profile.jsx
+�x       �x   �u�w�w parent/       # ParentDashboard.jsx, LinkStudentPage.jsx
+�x       �x   �u�w�w portal/       # ParentPortal.jsx, ConnectParent.jsx
+�x       �x   �|�w�w shared/       # Navbar.jsx, PixelButton.jsx, PixelCard.jsx
+�x       �x
+�x       �|�w�w utils/
+�x           �u�w�w auth.js       # Frontend auth utilities
+�x           �|�w�w api.js        # Axios API client with interceptors
+�x
+�u�w�w studyquest-app/            # Additional React app (similar structure)
+�u�w�w Doc/                       # Project documentation
+�u�w�w Diagram/                   # Architecture diagrams
+�u�w�w Diagram2/                  # Additional diagrams
+�u�w�w PROJECT_OVERVIEW.md       # Technical project overview
+�|�w�w UI_AND_PIXEL_ART_GUIDE.md # Design system and styling guide
 ```
+
 
 ---
 
@@ -150,7 +182,7 @@ npm start
 # Server runs on http://localhost:5000
 ```
 
-### Frontend (Main)
+### Frontend
 
 ```bash
 cd frontend
@@ -170,7 +202,18 @@ npm test
 # App runs on http://localhost:3000
 ```
 
-### Environment Variables (Backend)
+### Database Setup
+
+```bash
+# Run migrations in order
+psql $DATABASE_URL -f migrations/001_initial_schema.sql
+psql $DATABASE_URL -f migrations/002_add_parents.sql
+# ... continue through all migrations
+```
+
+---
+
+## Environment Variables
 
 Create `backend/.env`:
 
@@ -190,7 +233,7 @@ JWT_EXPIRES_IN=24h
 KIMI_API_KEY=sk-xxxxxxxxxxxxxxxx
 ```
 
-**IMPORTANT**: The `.env` file contains sensitive credentials. Never commit it to git.
+**IMPORTANT**: The .env file contains sensitive credentials. Never commit it to git (already in .gitignore).
 
 ---
 
@@ -200,67 +243,18 @@ KIMI_API_KEY=sk-xxxxxxxxxxxxxxxx
 
 | Table | Purpose |
 |-------|---------|
-| `students` | User accounts (students, parents, teachers), gamification stats |
-| `study_sessions` | Individual study session records |
+| students | User accounts (students, parents, teachers), gamification stats |
+| study_sessions | Individual study session records |
 | `achievements` | Available achievements/badges definitions |
 | `student_achievements` | Unlocked achievements per student |
-| `daily_goals` | Daily study targets and progress |
+| daily_goals | Daily study targets and progress |
 | `tasks` | User-created tasks with priorities |
-
-### Gamification Tables
-
-| Table | Purpose |
-|-------|---------|
-| `hero_journeys` | Procrastination Prophecy RPG progress |
-| `journey_stages` | 10-stage hero journey definitions |
-| `journey_logs` | Daily study logs with narrative context |
-| `narrative_events` | Story events in meta-narrative |
-
-### AI-Related Tables
-
-| Table | Purpose |
-|-------|---------|
-| `ai_conversations` | Chat history with Study Buddy (for parent review) |
-| `conversation_reviewers` | Parent/teacher permissions for AI review |
-| `tutor_sessions` | AI tutoring session records |
-| `tutor_messages` | Messages within tutoring sessions |
-
-### Social & Collaboration Tables
-
-| Table | Purpose |
-|-------|---------|
-| `study_groups` | Study group definitions |
-| `study_group_members` | Group membership |
-| `friendships` | Friend connections |
-| `challenges` | Study challenges |
-| `challenge_participants` | Challenge progress tracking |
-
-### Teacher Module Tables
-
-| Table | Purpose |
-|-------|---------|
-| `classes` | Teacher class management |
-| `class_students` | Class enrollment |
-| `class_challenges` | Class-specific challenges |
-| `student_analytics` | Aggregated analytics for teachers |
-| `session_verifications` | Teacher verification of study sessions |
-
-### Progress & Rewards Tables
-
-| Table | Purpose |
-|-------|---------|
-| `student_goals` | Personal study goals |
-| `progress_tracking` | Detailed daily/weekly progress |
-| `reward_definitions` | Parent/teacher-created rewards |
-| `student_rewards` | Earned/unlocked rewards |
-| `optimized_schedules` | AI-generated study schedules |
 
 ### Key Database Features
 - **UUID Primary Keys**: All main entities use UUIDs
 - **Foreign Key Constraints**: Proper referential integrity with CASCADE deletes
-- **Triggers**: Auto-update `updated_at` timestamps, auto-calculate student stats
-- **Views**: `student_leaderboard`, `recent_sessions`, `hero_journey_summary` for analytics
-- **Functions**: `calculate_hero_power()`, `calculate_shadow_doom()` for gamification
+- **Triggers**: Auto-update updated_at timestamps, auto-calculate student stats
+- **Views**: student_leaderboard, recent_sessions, hero_journey_summary for analytics
 
 ---
 
@@ -281,31 +275,38 @@ KIMI_API_KEY=sk-xxxxxxxxxxxxxxxx
 ### User Roles
 | Role | Access |
 |------|--------|
-| `student` | Dashboard, Progress, Social, Story Quest, AI Tutor, Tasks |
-| `teacher` | Teacher Dashboard, Class Management, Student Analytics, Session Verification |
-| `parent` | Parent Portal, View Child Progress, Rewards Management, AI Conversation Review |
+| student | Dashboard, Progress, Social, Story Quest, AI Tutor, Tasks |
+| teacher | Teacher Dashboard, Class Management, Student Analytics, Session Verification |
+| parent | Parent Portal, View Child Progress, Rewards Management, AI Conversation Review |
 
-### Protected Routes
-Routes use `authenticateToken` middleware:
-```javascript
-const { authenticateToken } = require('../middleware/auth');
-router.get('/profile', authenticateToken, async (req, res) => { ... });
-```
+---
 
-### Frontend Auth Utilities
-Located in `frontend/src/utils/auth.js`:
-- `setAuth(token, user)` - Store auth data in localStorage
-- `getAuth()` - Retrieve auth data
-- `getUser()` - Get current user object
-- `getToken()` - Get JWT token
-- `isAuthenticated()` - Check login status
-- `logout()` - Clear auth data
+## API Endpoints
 
-### API Client
-Located in `frontend/src/utils/api.js`:
-- Axios instance with base URL `http://localhost:5000/api`
-- Request interceptor adds Authorization header with JWT
-- Response interceptor handles 401 errors (auto logout)
+### Authentication
+- POST /api/auth/register - Register student/parent/teacher
+- POST /api/auth/login - Login
+- GET /api/auth/me - Get current user
+- GET /api/auth/profile - Get full profile
+
+### Study Sessions
+- GET /api/sessions/active - Get active session
+- POST /api/sessions/start - Start new session
+- POST /api/sessions/:id/end - End session
+
+### Tasks
+- GET /api/tasks - List tasks
+- POST /api/tasks - Create task
+- PUT /api/tasks/:id - Update task
+- DELETE /api/tasks/:id - Delete task
+
+### AI Features
+- POST /api/ai/chat - Chat with Study Buddy
+- GET /api/ai/history - Get chat history
+
+### Story Quest
+- POST /api/storyquest/intro - Generate story intro
+- POST /api/storyquest/learn - Get lesson content
 
 ---
 
@@ -313,151 +314,25 @@ Located in `frontend/src/utils/api.js`:
 
 ### JavaScript/React
 - Use ES6+ features (async/await, destructuring, arrow functions)
-- Component files use PascalCase (e.g., `StudyTimer.jsx`)
+- Component files use PascalCase (e.g., StudyTimer.jsx)
 - Utility files use camelCase (e.g., `auth.js`)
 - CSS classes follow Tailwind convention
-- Use single quotes for strings
 
 ### Backend
-- Route handlers use snake_case for SQL columns
-- API responses follow pattern: `{ success: boolean, message?: string, data?: any }`
+- API responses follow pattern: { success: boolean, message?: string, data?: any }
 - Error handling with try/catch
 - Console logging with emoji prefixes:
-  - `✅` - Success
-  - `❌` - Error
-  - `📊` - Database/query
-  - `🔍` - Debug/info
-  - `🚀` - API calls
+  - ??- Success
+  - ??- Error
+  - ?? - Database/query
+  - ?? - Debug/info
+  - ?? - API calls
 
 ### SQL
 - Use uppercase for keywords (CREATE, SELECT, INSERT)
 - Use lowercase for identifiers
 - Include comments for complex queries
-- Always use parameterized queries (`$1, $2`) to prevent SQL injection
-
-### Git
-- `.env` files are gitignored
-- `node_modules/` directories are gitignored
-- Migration files should be committed
-
----
-
-## Key Features Implementation
-
-### 1. Gamification System (The Procrastination Prophecy)
-- **XP Calculation**: 1 minute = 1 XP base, bonuses for longer sessions
-- **Level System**: XP thresholds for level progression
-- **Streaks**: Daily login tracking, affects "Hero Power"
-- **Achievements**: Tiered badges (bronze, silver, gold, platinum)
-- **Hero Power**: Increases with streaks (max 100)
-- **Shadow of Doom**: Grows when missing study days (0-100)
-- **Backend**: `services/kimiService.js` (NARRATIVE_CONTEXT), `migrations/007_procrastination_prophecy.sql`
-- **Frontend**: Dashboard displays Hero Status card
-
-### 2. Age-Tier System
-Students are categorized by form level:
-| Tier | Levels | Ages | Language Style |
-|------|--------|------|----------------|
-| `P1-P3` | P1-P6 | 6-8 | Very simple English, 5-8 word sentences |
-| `P4-P6` | P4-P6 | 9-11 | Clear simple English, everyday examples |
-| `S1-S3` | S1-S3 | 12-14 | Normal English, school words OK |
-| `S4-S6` | S4-S6 | 15-17 | Proper school English, DSE-level |
-
-AI content is automatically adjusted based on the student's tier via `TIER_PROMPT_CONFIG` in `kimiService.js`.
-
-### 3. AI Integration (Kimi/Moonshot)
-Located in `backend/services/kimiService.js`:
-
-**Main Functions:**
-- `chatWithStudyBuddy()` - Chat-based learning assistant
-- `generateStoryIntro()` - Story Quest RPG intro generation
-- `generateStoryScene()` - RPG scene generation
-- `generateStoryLesson()` - Educational content generation
-- `generateStoryQuestion()` - Quiz question generation (with subject validation)
-- `generateStudySchedule()` - AI-assisted study planning
-
-**Configuration:**
-- Model: `kimi-k2.5`
-- Timeout: 60 seconds
-- Max tokens: 2000 for chat, varies for other functions
-- Thinking mode: Enabled for chat
-
-### 4. Story Quest RPG
-- **Flow**: Select Subject → Choose Topic → Story Intro → Learn → Quiz → Battle → Victory
-- **Backend**: `routes/storyquest.js`, `routes/aiStory.js`
-- **Frontend**: `components/AITutor/StoryQuestAI.jsx`
-- **Features**: AI-generated lessons, interactive choices, boss battles, XP rewards
-
-### 5. Parent Features
-- **Child Linking**: Via 6-digit connection codes
-- **Dashboard**: View child's study statistics, goals, progress
-- **AI Review**: View and flag child's AI conversations
-- **Rewards**: Create and manage reward systems
-- **Backend**: `routes/family.js`
-- **Frontend**: `components/parent/ParentDashboard.jsx`
-
-### 6. Teacher Module
-- **Class Management**: Create classes, generate class codes
-- **Student Analytics**: Track study time, accuracy, engagement
-- **Session Verification**: Verify student study sessions
-- **Challenges**: Create class-specific challenges
-- **Backend**: `routes/teacher.js`
-- **Frontend**: `components/Teacher/TeacherDashboard.jsx`
-
----
-
-## API Endpoints
-
-### Authentication
-- `POST /api/auth/register` - Register student/parent/teacher
-- `POST /api/auth/register-parent` - Register as parent
-- `POST /api/auth/login` - Login
-- `GET /api/auth/me` - Get current user (lightweight)
-- `GET /api/auth/profile` - Get full profile
-- `PATCH /api/auth/onboarding` - Set form level after registration
-
-### Study Sessions
-- `GET /api/sessions/active` - Get active session
-- `POST /api/sessions/start` - Start new session
-- `POST /api/sessions/:id/end` - End session
-- `GET /api/sessions/history` - Get session history
-
-### Tasks
-- `GET /api/tasks` - List tasks
-- `POST /api/tasks` - Create task
-- `PUT /api/tasks/:id` - Update task
-- `DELETE /api/tasks/:id` - Delete task
-- `PATCH /api/tasks/:id/toggle` - Toggle completion
-
-### AI Features
-- `POST /api/ai/chat` - Chat with Study Buddy
-- `GET /api/ai/history` - Get chat history
-- `POST /api/ai/generate-schedule` - Generate study schedule
-
-### Story Quest
-- `POST /api/storyquest/intro` - Generate story intro
-- `POST /api/storyquest/learn` - Get lesson content
-- `POST /api/storyquest/question` - Generate quiz question
-
-### Family
-- `POST /api/family/generate-code` - Generate connection code (student)
-- `POST /api/family/link-child` - Link to child (parent)
-- `GET /api/family/children-stats` - Get linked children stats
-- `GET /api/family/guardians` - Get student's guardians
-
-### Progress
-- `GET /api/progress/dashboard` - Get progress dashboard data
-- `POST /api/progress/goals` - Create goal
-
-### Teacher
-- `GET /api/teacher/classes` - Get teacher's classes
-- `POST /api/teacher/classes` - Create class
-- `GET /api/teacher/analytics` - Get class analytics
-
-### Social
-- `GET /api/social/groups` - Get study groups
-- `POST /api/social/groups` - Create group
-- `GET /api/social/friends` - Get friends list
+- Always use parameterized queries ($1, $2) to prevent SQL injection
 
 ---
 
@@ -469,7 +344,7 @@ Located in `backend/services/kimiService.js`:
 
 ### Health Check Endpoints
 ```bash
-# Backend health
+# backend health
 curl http://localhost:5000/api/health
 
 # Database test
@@ -478,49 +353,6 @@ curl http://localhost:5000/api/db/test
 # Root API
 curl http://localhost:5000/api
 ```
-
-### Test Commands
-```bash
-# Frontend tests
-cd frontend && npm test
-
-# Backend start (manual testing)
-cd backend && npm run dev
-```
-
----
-
-## Development Conventions
-
-### Environment Management
-- **Development**: Local server + Supabase PostgreSQL
-- **Production**: Deployed backend + Supabase (managed PostgreSQL)
-- Never expose `JWT_SECRET` or API keys in client code
-
-### Code Organization
-- Keep business logic in controllers/services
-- Keep route handlers thin (validation + call service)
-- Use middleware for cross-cutting concerns (auth, logging)
-
-### Adding a New API Endpoint
-1. Create route handler in `backend/routes/`
-2. Add route to `backend/server.js`
-3. Use `authenticateToken` middleware if protected
-4. Return consistent response format: `{ success, message?, data? }`
-
-### Adding a New Database Table
-1. Create migration file in `backend/migrations/`
-2. Follow naming convention: `XXX_description.sql`
-3. Run migration manually via `psql $DATABASE_URL -f migrations/XXX.sql`
-4. Update this documentation
-
-### Adding a New Frontend Component
-1. Create component in appropriate `frontend/src/components/` subdirectory
-2. Use PascalCase for component name
-3. Add route to `frontend/src/App.js` if needed
-4. Use Tailwind classes for styling
-5. Use `lucide-react` for icons
-6. Use shared components (PixelButton, PixelCard) for consistency
 
 ---
 
@@ -536,51 +368,32 @@ cd backend && npm run dev
 
 ---
 
-## Troubleshooting
+## Key Features Implementation
 
-### Database Connection Issues
-- Check `DATABASE_URL` format in `.env`
-- Ensure SSL is enabled for Supabase (`rejectUnauthorized: false`)
-- Verify network access to Supabase
-- Check connection timeout settings (10s default)
+### 1. Gamification System (The Procrastination Prophecy)
+- **XP Calculation**: 1 minute = 1 XP base, bonuses for longer sessions
+- **Level System**: XP thresholds for level progression
+- **Streaks**: Daily login tracking, affects Hero Power
+- **Achievements**: Tiered badges (bronze, silver, gold, platinum)
+- **Hero Power**: Increases with streaks (max 100)
+- **Shadow of Doom**: Grows when missing study days (0-100)
 
-### AI API Issues
-- Verify `KIMI_API_KEY` is set in `.env`
-- Check API key hasn't expired
-- Monitor API rate limits
-- Check Kimi service logs for detailed error messages
+### 2. Age-Tier System
+Students are categorized by form level:
 
-### Frontend-Backend Communication
-- Ensure CORS is properly configured in backend
-- Check that backend is running on correct port (5000)
-- Verify API URLs in frontend (`utils/api.js`)
-- Check browser console for CORS errors
+| Tier | Levels | Ages | Language Style |
+|------|--------|------|----------------|
+| P1-P3 | P1-P3 | 6-8 | Very simple English, 5-8 word sentences |
+| P4-P6 | P4-P6 | 9-11 | Clear simple English, everyday examples |
+| S1-S3 | S1-S3 | 12-14 | Normal English, school words OK |
+| S4-S6 | S4-S6 | 15-17 | Proper school English, DSE-level |
 
-### Common Errors
-- **401 Unauthorized**: Token expired or invalid, redirect to login
-- **403 Forbidden**: Valid token but insufficient permissions
-- **500 Server Error**: Check backend console logs
-
----
-
-## Team Structure
-
-| Member | Role | Responsibilities |
-|--------|------|------------------|
-| Cheung King Wa | Frontend Lead | React, UI/UX, PWA, Mobile |
-| Wang Wai Shing | Backend Lead | API, Database, Auth, Security |
-| Liang Fai Hung | AI Specialist | Kimi APIs, Data Visualization |
-| Siu Tsz Kin | QA & Security | Testing, Security audits |
-
----
-
-## Documentation References
-
-- `Doc/Project Plan.md` - Full project plan
-- `Doc/Table_Of_Content.md` - Report structure
-- `PROJECT_OVERVIEW.md` - Technical project overview
-- `UI_AND_PIXEL_ART_GUIDE.md` - Design system and styling guide
-- `backend/migrations/*.sql` - Schema evolution
+### 3. AI Integration (Kimi/Moonshot)
+Located in `backend/services/kimiService.js`:
+- Model: kimi-k2.5
+- Timeout: 60 seconds
+- Max tokens: 2000 for chat
+- Thinking mode: Enabled for chat
 
 ---
 

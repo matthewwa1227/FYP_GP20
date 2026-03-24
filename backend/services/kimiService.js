@@ -1181,12 +1181,277 @@ const generateStudyTips = async ({ subject, difficulty, performance }) => {
 };
 
 // ============================================
+// GENERATE EXERCISES - MISSION 43 FIX (Token Limit + Reasoning Detection)
+// ============================================
+async function generateExercises(prompt, retries = 3) {
+  const apiKey = process.env.KIMI_API_KEY;
+  if (!apiKey) throw new Error('KIMI_API_KEY missing');
+  
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      if (attempt > 0) {
+        console.log(`🔄 Retry ${attempt + 1}...`);
+        await new Promise(r => setTimeout(r, 3000));
+      }
+
+      console.log(`📝 Calling Kimi API (attempt ${attempt + 1})...`);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
+      
+      // FIX MISSION 45: Increase to 8000 tokens to handle heavy reasoning + full JSON
+      console.log(`⚠️ Using 8000 max_tokens for exercise generation (reasoning + JSON)`);
+      
+      const response = await fetch('https://api.moonshot.cn/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'kimi-k2.5',
+          messages: [{ 
+            role: 'user', 
+            content: prompt + "\n\nImportant: Generate compact JSON output directly without lengthy explanation." 
+          }],
+          max_tokens: 8000  // FIX MISSION 45: 4000→8000 (handles 7000+ chars reasoning + 2000+ chars JSON)
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      console.log(`📡 HTTP Status: ${response.status}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('📦 RAW RESPONSE:', JSON.stringify(data).substring(0, 800));
+      
+      // Check finish reason
+      const finishReason = data.choices?.[0]?.finish_reason;
+      const message = data.choices?.[0]?.message;
+      
+      console.log(`🔍 Finish reason: ${finishReason}`);
+      console.log(`🔍 Has reasoning_content: ${!!message?.reasoning_content}`);
+      console.log(`🔍 Content length: ${message?.content?.length || 0}`);
+
+      // Handle length limit hit
+      if (finishReason === 'length') {
+        console.error('⚠️ Token limit hit! Model ran out of tokens.');
+        console.error(`Reasoning used: ${message?.reasoning_content?.length || 0} chars`);
+        
+        // EMERGENCY FALLBACK: If reasoning exists but content is empty
+        if (!message?.content && message?.reasoning_content) {
+          throw new Error('Token limit: Model thought too much, no output generated. Increase max_tokens or simplify prompt.');
+        }
+      }
+
+      if (!message?.content || message.content.trim() === '') {
+        // If content empty but reasoning has data, something is wrong with model config
+        if (message?.reasoning_content) {
+          console.error('🤔 Reasoning content exists but no content - model is in thinking mode');
+          throw new Error('Empty content: Model is reasoning instead of outputting JSON');
+        }
+        throw new Error('Invalid response: content is empty');
+      }
+
+      const content = message.content;
+      console.log(`✅ SUCCESS! Content: ${content.length} chars`);
+      console.log(`📝 Preview: ${content.substring(0, 200)}...`);
+
+      return content.replace(/```json\n?/gi, '').replace(/```\n?/g, '');
+
+    } catch (error) {
+      console.error(`❌ Attempt ${attempt + 1} failed:`, error.message);
+      if (attempt === retries - 1) throw error;
+    }
+  }
+}
+
+// ============================================
+// ANALYZE DOCUMENT IMAGE - With Retry & Compression (MISSION 50)
+// ============================================
+async function analyzeDocumentImage(images, mimeType = 'image/jpeg') {
+  const apiKey = process.env.KIMI_API_KEY;
+  if (!apiKey) throw new Error('KIMI_API_KEY missing');
+  
+  // Support single image or array of images
+  const imageArray = Array.isArray(images) ? images : [images];
+  console.log(`🖼️ Processing ${imageArray.length} image(s)...`);
+  
+  // Helper to compress image if sharp is available
+  async function compressImage(base64String, targetMimeType) {
+    try {
+      // Try to use sharp if available
+      const sharp = require('sharp');
+      const buffer = Buffer.from(base64String, 'base64');
+      const originalSize = base64String.length;
+      
+      const resized = await sharp(buffer)
+        .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 80 })
+        .toBuffer();
+      
+      const compressed = resized.toString('base64');
+      console.log(`📉 Compressed image: ${originalSize} → ${compressed.length} chars (${Math.round((1 - compressed.length/originalSize) * 100)}% reduction)`);
+      return compressed;
+    } catch (e) {
+      // Sharp not available or compression failed, return original
+      return base64String;
+    }
+  }
+  
+  // Process images (compress if possible, limit to 3)
+  const processedImages = [];
+  for (const img of imageArray.slice(0, 3)) {
+    const compressed = await compressImage(img, mimeType);
+    processedImages.push(compressed);
+  }
+  
+  // Determine content type prefix
+  const contentType = mimeType === 'image/png' ? 'image/png' : 
+                      mimeType === 'image/webp' ? 'image/webp' :
+                      'image/jpeg';
+  
+  // Build message content with text + all images
+  const content = [
+    {
+      type: 'text',
+      text: `Analyze this image document and extract information about the exercises.
+
+Please analyze the provided image(s) and return ONLY valid JSON in this format:
+{
+  "subject": "The subject of the exercises (e.g., English, Mathematics, Science, History, Chinese)",
+  "concept": "The specific grammar point, concept, or skill being practiced (e.g., 'past tense', 'fractions', 'photosynthesis')",
+  "difficulty": "easy|medium|hard",
+  "extractedExercises": [
+    {
+      "type": "fill_blank|multiple_choice|match|error_correction|unscramble|short_answer",
+      "text": "The question text",
+      "answer": "The correct answer"
+    }
+  ],
+  "exerciseCount": 5,
+  "suggestedQuestionCount": 10
+}
+
+Instructions:
+1. Look at the image carefully and read all visible text
+2. Identify the subject area from the content (Math, English, Chinese, Science, etc.)
+3. Identify the specific concept or skill being tested
+4. Extract as many exercises as you can see in the image
+5. Determine the difficulty level based on the content complexity
+
+IMPORTANT: If the image contains Chinese text with mathematical calculations (numbers, equations, word problems), detect subject as 'Mathematics' and language as 'Chinese'. Do not default to English.
+
+Return ONLY valid JSON, no markdown, no explanations.`
+    }
+  ];
+  
+  // Add all processed images to content
+  processedImages.forEach((img, i) => {
+    console.log(`📎 Attaching image ${i + 1}: ${img.length} chars`);
+    content.push({
+      type: 'image_url',
+      image_url: {
+        url: `data:${contentType};base64,${img}`
+      }
+    });
+  });
+
+  // Retry logic for connection errors (ECONNRESET, etc.)
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      console.log(`🚀 API attempt ${attempt}/3...`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 180000); // 180s timeout for large uploads
+      
+      const response = await fetch('https://api.moonshot.cn/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'kimi-k2.5',
+          messages: [{
+            role: 'user',
+            content: content
+          }],
+          max_tokens: 4000,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      console.log(`📡 HTTP Status: ${response.status}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('📦 Raw response:', JSON.stringify(data).substring(0, 500));
+      
+      // Check finish reason
+      const finishReason = data.choices?.[0]?.finish_reason;
+      const message = data.choices?.[0]?.message;
+      
+      console.log(`🔍 Finish reason: ${finishReason}`);
+      console.log(`🔍 Content length: ${message?.content?.length || 0}`);
+
+      if (finishReason === 'length') {
+        console.error('⚠️ Token limit hit!');
+      }
+
+      if (!message?.content || message.content.trim() === '') {
+        throw new Error('Invalid response: content is empty');
+      }
+
+      const result = message.content;
+      console.log(`✅ Document analysis complete: ${result.length} chars`);
+      
+      // Clean markdown and return
+      return result.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
+
+    } catch (error) {
+      // Check if this is a retryable error
+      const isRetryable = error.code === 'ECONNRESET' || 
+                         error.code === 'ECONNABORTED' ||
+                         error.code === 'ETIMEDOUT' ||
+                         error.message?.includes('fetch failed') ||
+                         error.message?.includes('aborted') ||
+                         error.message?.includes('socket hang up');
+      
+      console.error(`❌ Attempt ${attempt} failed:`, error.message);
+      
+      // If last attempt or non-retryable error, throw
+      if (attempt === 3 || !isRetryable) {
+        throw error;
+      }
+      
+      // Exponential backoff: 3s, 6s, 9s
+      const delay = attempt * 3000;
+      console.log(`⏳ Retrying in ${delay}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+}
+
+// ============================================
 // EXPORTS
 // ============================================
 module.exports = {
   chatWithStudyBuddy,
   chatWithStudyBuddySocratic,
   sendMessageToKimi,
+  generateExercises,  // ADDED: Exercise generation function
+  analyzeDocumentImage,  // MISSION 48: Added image analysis function
   generateStoryIntro,
   generateStoryScene,
   generateStoryLesson,
