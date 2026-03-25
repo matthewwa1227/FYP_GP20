@@ -1,6 +1,8 @@
 # Environment files
 .env
+.env.*
 *.env.local
+!.env.production.example
 
 # Dependencies
 node_modules/

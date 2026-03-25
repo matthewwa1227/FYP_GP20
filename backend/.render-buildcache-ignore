@@ -1,0 +1,4 @@
+# Force Render to clear build cache on next deploy
+# Touch this file or change its content to invalidate cache
+node_modules/
+*.log
