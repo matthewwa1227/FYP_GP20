@@ -1,0 +1,38 @@
+# Render Blueprint Configuration
+# This file allows one-click deploy to Render
+
+services:
+  # Backend API Service
+  - type: web
+    name: studyquest-api
+    runtime: node
+    region: singapore  # Closest to Hong Kong
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: studyquest-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: KIMI_API_KEY
+        sync: false  # Set manually in dashboard
+      - key: FRONTEND_URL
+        sync: false  # Set to Vercel URL after deploy
+
+databases:
+  - name: studyquest-db
+    databaseName: studyquest
+    user: studyquest
+    plan: free
+    region: singapore
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: everywhere

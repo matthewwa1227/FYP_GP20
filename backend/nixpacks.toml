@@ -1,0 +1,11 @@
+# Nixpacks Configuration for Railway
+# More control over the build process
+
+[phases.build]
+cmds = ["echo 'No build step required for Node.js backend'"]
+
+[phases.setup]
+nixPkgs = ["nodejs_18"]
+
+[start]
+cmd = "npm start"

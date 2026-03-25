@@ -1,8 +1,9 @@
 // services/kimiService.js
 
 const OpenAI = require('openai');
+const logger = require('../utils/logger');
 
-console.log('🔑 Kimi API Key loaded:', process.env.KIMI_API_KEY ? 'Yes (length: ' + process.env.KIMI_API_KEY.length + ')' : 'NO - MISSING!');
+logger.info('Kimi API Key loaded:', process.env.KIMI_API_KEY ? 'Yes (length: ' + process.env.KIMI_API_KEY.length + ')' : 'NO - MISSING!');
 
 const kimi = new OpenAI({
   apiKey: process.env.KIMI_API_KEY,
@@ -1444,14 +1445,200 @@ Return ONLY valid JSON, no markdown, no explanations.`
 }
 
 // ============================================
+// READING COMPREHENSION - MISSION 55
+// ============================================
+async function generateReadingPassage(subject, difficulty, passageType, questionCount, includeVocabulary = true) {
+  const apiKey = process.env.KIMI_API_KEY;
+  if (!apiKey) throw new Error('KIMI_API_KEY missing');
+  
+  logger.mission(55, `Generating ${subject} reading comprehension (${difficulty}, ${passageType}, ${questionCount} questions)`);
+  
+  const isChinese = subject === 'Chinese' || subject === '中文';
+  
+  const prompt = isChinese
+    ? `生成一篇中文閱讀理解練習。難度：${difficulty}。文體：${passageType}。
+
+要求：
+1. 文章長度：${difficulty === 'hard' ? '500-800字' : difficulty === 'medium' ? '400-600字' : '300-500字'}
+2. 包含${difficulty === 'hard' ? '4-5個段落' : '3-4個段落'}
+3. 語體：${difficulty === 'hard' ? '可包含文言文或深層白話文' : '淺白語體文'}
+4. 生成${questionCount}道題目，包括：
+   - 段意理解（段落大意）
+   - 詞意辨析（詞語/成語理解）
+   - 主旨歸納（中心思想）
+   - 推理判斷（隱含意義）
+   ${difficulty === 'hard' ? '- 語句賞析（修辭手法/深層含義）' : ''}
+5. 提供詞彙表（5-8個難詞，附解釋和例句）
+
+輸出JSON格式：
+{
+  "title": "文章標題",
+  "subject": "Chinese",
+  "difficulty": "${difficulty}",
+  "passageType": "${passageType}",
+  "passage": "文章全文...",
+  "wordCount": 數字,
+  "vocabulary": [
+    {"word": "詞語", "meaning": "解釋", "sentence": "例句"}
+  ],
+  "questions": [
+    {
+      "type": "段意|詞意|主旨|推理|賞析",
+      "question": "問題文字",
+      "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
+      "answer": "B",
+      "explanation": "詳細解釋為什麼這是答案",
+      "referenceLine": "相關段落或句子（可選）"
+    }
+  ]
+}
+
+重要：
+- 確保文章內容適合香港中學生（中一至中六程度）
+- 題目要有明確答案，不能模棱兩可
+- 文章主題可以是：校園生活、社會議題、文化傳統、人物故事、科普知識`
+    
+    : `Generate English reading comprehension practice for Hong Kong students.
+
+Settings:
+- Difficulty: ${difficulty}
+- Genre: ${passageType}
+- Questions: ${questionCount}
+
+Requirements:
+1. Passage length: ${difficulty === 'hard' ? '500-700 words' : difficulty === 'medium' ? '400-600 words' : '300-500 words'}
+2. Structure: ${difficulty === 'hard' ? '4-5 paragraphs' : '3-4 paragraphs'}
+3. Tone: ${difficulty === 'hard' ? 'Academic/formal (DSE-level)' : difficulty === 'medium' ? 'Semi-formal' : 'Accessible'}
+4. Generate ${questionCount} questions covering:
+   - Main idea (段落/全文主旨)
+   - Specific details (細節理解)
+   - Vocabulary in context (詞彙理解)
+   - Inference (推論)
+   - ${difficulty === 'hard' ? "Author's tone/attitude (語氣態度)" : ''}
+   ${difficulty === 'hard' ? '- Summary completion (optional)' : ''}
+5. Include vocabulary list: 5-8 challenging words with definitions and example sentences
+
+Output JSON format:
+{
+  "title": "Passage Title",
+  "subject": "English",
+  "difficulty": "${difficulty}",
+  "passageType": "${passageType}",
+  "passage": "Full passage text...",
+  "wordCount": number,
+  "vocabulary": [
+    {"word": "word", "meaning": "definition", "sentence": "example sentence"}
+  ],
+  "questions": [
+    {
+      "type": "main_idea|detail|vocabulary|inference|tone",
+      "question": "Question text",
+      "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
+      "answer": "B",
+      "explanation": "Detailed explanation of why this is correct",
+      "referenceParagraph": number
+    }
+  ]
+}
+
+Important:
+- Content suitable for Hong Kong secondary students (Form 1-6)
+- Questions must have unambiguous answers
+- Topics: school life, social issues, culture, biographies, science, or general interest`;
+
+  // MISSION 57: Extended timeout for reading comprehension (5 minutes)
+  const TIMEOUT_MS = 300000; // 5 minutes
+  const startTime = Date.now();
+  
+  logger.time(`MISSION 57: Setting ${TIMEOUT_MS/1000}s timeout for reading generation`);
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    logger.error(`MISSION 57: Reading generation timeout after ${TIMEOUT_MS}ms`);
+    controller.abort(new Error('TIMEOUT_EXCEEDED'));
+  }, TIMEOUT_MS);
+  
+  // Log progress every 30s
+  const progressInterval = setInterval(() => {
+    const elapsed = Date.now() - startTime;
+    logger.progress(`MISSION 57: Still generating reading passage... (${elapsed/1000}s elapsed)`);
+  }, 30000);
+  
+  try {
+    const response = await fetch('https://api.moonshot.cn/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'kimi-k2.5',
+        messages: [{
+          role: 'user',
+          content: prompt + "\n\nRespond with valid JSON only, no markdown formatting."
+        }],
+        max_tokens: 8000, // Large for passage + questions
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+    clearInterval(progressInterval);
+    
+    logger.http(`MISSION 57: HTTP Status: ${response.status} (${(Date.now() - startTime)/1000}s total)`);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    const message = data.choices?.[0]?.message;
+    
+    if (!message?.content) {
+      throw new Error('Empty response from API');
+    }
+
+    // Clean and parse
+    let content = message.content.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
+    
+    // Try to parse as JSON
+    try {
+      const parsed = JSON.parse(content);
+      logger.success(`MISSION 57: Generated reading passage: "${parsed.title}" (${parsed.wordCount} words, ${parsed.questions?.length} questions) in ${(Date.now() - startTime)/1000}s`);
+      return content;
+    } catch (e) {
+      // If parse fails, return the text anyway
+      logger.warn(`MISSION 57: Non-JSON response, returning raw (${(Date.now() - startTime)/1000}s)`);
+      return content;
+    }
+
+  } catch (error) {
+    clearTimeout(timeoutId);
+    clearInterval(progressInterval);
+    
+    // MISSION 57: Better error handling
+    if (error.message === 'TIMEOUT_EXCEEDED' || error.name === 'AbortError') {
+      const elapsed = Date.now() - startTime;
+      logger.error(`MISSION 57: Timeout error after ${elapsed/1000}s`);
+      throw new Error(`Reading generation timeout: Operation took longer than ${TIMEOUT_MS/1000} seconds (${elapsed/1000}s elapsed). Try reducing question count to 5.`);
+    }
+    
+    logger.error('MISSION 57: Reading generation error:', error.message);
+    throw error;
+  }
+}
+
+// ============================================
 // EXPORTS
 // ============================================
 module.exports = {
   chatWithStudyBuddy,
   chatWithStudyBuddySocratic,
   sendMessageToKimi,
-  generateExercises,  // ADDED: Exercise generation function
-  analyzeDocumentImage,  // MISSION 48: Added image analysis function
+  generateExercises,
+  generateReadingPassage,  // MISSION 55: Reading comprehension
+  analyzeDocumentImage,
   generateStoryIntro,
   generateStoryScene,
   generateStoryLesson,

@@ -6,7 +6,8 @@ const { authenticateToken } = require('../middleware/auth');
 const kimiService = require('../services/kimiService');
 const contentService = require('../services/contentService');
 const fs = require('fs').promises;
-const fsSync = require('fs');  // MISSION 48: For reading images as base64
+const fsSync = require('fs');
+const logger = require('../utils/logger');
 
 // ============================================
 // MULTER CONFIGURATION
@@ -238,12 +239,12 @@ router.post('/analyze-document', authenticateToken, upload.array('documents', 3)
     }
     
     // Debug logging for MISSION 53
-    console.log(`📁 MISSION 53: Received files:`, files?.map(f => ({ name: f.originalname, field: f.fieldname, size: f.size })));
-    console.log(`📁 MISSION 53: Single file:`, singleFile?.originalname);
+    logger.file('MISSION 53: Received files:', files?.map(f => ({ name: f.originalname, field: f.fieldname, size: f.size })));
+    logger.file('MISSION 53: Single file:', singleFile?.originalname);
     
     // Handle multiple files
     if (files && files.length > 1) {
-      console.log(`🖼️ MISSION 52: Batch analyzing ${files.length} documents`);
+      logger.image('MISSION 52: Batch analyzing', files.length, 'documents');
       
       const fileData = files.map(f => ({ path: f.path, mimetype: f.mimetype }));
       
@@ -454,6 +455,128 @@ Return JSON:
     });
   }
 });
+
+// ============================================
+// GENERATE READING COMPREHENSION - MISSION 55
+// ============================================
+router.post('/generate-reading', authenticateToken, async (req, res) => {
+  const { subject, difficulty = 'medium', passageType = 'narrative', numQuestions = 10 } = req.body;
+  
+  // Validate input
+  if (!subject || !['English', 'Chinese'].includes(subject)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Subject must be English or Chinese'
+    });
+  }
+  
+  const count = Math.min(Math.max(numQuestions, 5), 15); // 5-15 questions
+  
+  logger.mission(55, `Generating reading comprehension: ${subject} | ${difficulty} | ${passageType} | ${count} questions`);
+  
+  try {
+    const response = await kimiService.generateReadingPassage(
+      subject,
+      difficulty,
+      passageType,
+      count,
+      true // include vocabulary
+    );
+    
+    // Parse the response
+    let readingData;
+    try {
+      readingData = JSON.parse(response);
+    } catch (e) {
+      logger.error('Failed to parse reading response as JSON:', e.message);
+      // Return raw response for debugging
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to parse reading comprehension data',
+        raw: response.substring(0, 500)
+      });
+    }
+    
+    // Validate structure
+    if (!readingData.passage || !readingData.questions || readingData.questions.length === 0) {
+      logger.error('Invalid reading data structure');
+      return res.status(500).json({
+        success: false,
+        message: 'Invalid reading comprehension data structure'
+      });
+    }
+    
+    logger.success(`MISSION 55: Generated reading: "${readingData.title}" (${readingData.wordCount} words, ${readingData.questions.length} questions)`);
+    
+    res.json({
+      success: true,
+      ...readingData,
+      isReadingComprehension: true,
+      generatedAt: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    logger.error('MISSION 55: Generate reading error:', error.message);
+    
+    // Return fallback data
+    const fallbackData = generateReadingFallback(subject, difficulty, passageType, count);
+    
+    res.json({
+      success: true,
+      ...fallbackData,
+      isReadingComprehension: true,
+      _fallback: true,
+      generatedAt: new Date().toISOString()
+    });
+  }
+});
+
+// Fallback generator for reading comprehension
+function generateReadingFallback(subject, difficulty, passageType, count) {
+  const isChinese = subject === 'Chinese';
+  
+  if (isChinese) {
+    return {
+      title: '閱讀理解練習（示範）',
+      subject: 'Chinese',
+      difficulty,
+      passageType,
+      passage: '這是一篇示範閱讀理解文章。在實際使用時，AI會根據你的設定生成一篇完整的文章，內容會配合所選的難度和文體。\\n\\n文章會包含適量的詞彙，並圍繞一個主題展開。學生閱讀後需要回答相關的問題，測試他們的理解能力。',
+      wordCount: 150,
+      vocabulary: [
+        { word: '示範', meaning: '作為學習的榜樣', sentence: '老師示範如何解題。' },
+        { word: '配合', meaning: '與...相適應', sentence: '這個顏色配合你的衣服。' }
+      ],
+      questions: Array.from({ length: count }, (_, i) => ({
+        type: ['段意', '詞意', '主旨', '推理'][i % 4],
+        question: `示範問題 ${i + 1}：這是${['段意理解', '詞意辨析', '主旨歸納', '推理判斷'][i % 4]}題型的示範。`,
+        options: ['A. 選項一', 'B. 選項二', 'C. 選項三', 'D. 選項四'],
+        answer: 'B',
+        explanation: '這是答案解釋的示範。在實際使用時，這裡會提供詳細的解釋。'
+      }))
+    };
+  } else {
+    return {
+      title: 'Reading Comprehension Practice (Sample)',
+      subject: 'English',
+      difficulty,
+      passageType,
+      passage: 'This is a sample reading passage. In actual use, AI will generate a complete passage based on your settings, matching the selected difficulty and genre.\\n\\nThe passage will include appropriate vocabulary and develop around a theme. Students will need to answer related questions to test their comprehension skills.',
+      wordCount: 120,
+      vocabulary: [
+        { word: 'sample', meaning: 'a small part showing the quality of the whole', sentence: 'This is a sample of the product.' },
+        { word: 'comprehension', meaning: 'understanding', sentence: 'Reading comprehension is an important skill.' }
+      ],
+      questions: Array.from({ length: count }, (_, i) => ({
+        type: ['main_idea', 'detail', 'vocabulary', 'inference'][i % 4],
+        question: `Sample Question ${i + 1}: This demonstrates the ${['main idea', 'detail', 'vocabulary', 'inference'][i % 4]} question type.`,
+        options: ['A. Option 1', 'B. Option 2', 'C. Option 3', 'D. Option 4'],
+        answer: 'B',
+        explanation: 'This is a sample explanation. In actual use, detailed explanations will be provided here.'
+      }))
+    };
+  }
+}
 
 // ============================================
 // GENERATE SIMILAR EXERCISES - With File Upload
