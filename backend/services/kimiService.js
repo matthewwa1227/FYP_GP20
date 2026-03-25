@@ -1451,7 +1451,7 @@ async function generateReadingPassage(subject, difficulty, passageType, question
   const apiKey = process.env.KIMI_API_KEY;
   if (!apiKey) throw new Error('KIMI_API_KEY missing');
   
-  logger.mission(55, `Generating ${subject} reading comprehension (${difficulty}, ${passageType}, ${questionCount} questions)`);
+  logger.info(`🎯 MISSION 55: ${subject} reading | ${difficulty} | ${passageType} | ${questionCount} Qs`);
   
   const isChinese = subject === 'Chinese' || subject === '中文';
   
@@ -1546,23 +1546,27 @@ Important:
 - Questions must have unambiguous answers
 - Topics: school life, social issues, culture, biographies, science, or general interest`;
 
-  // MISSION 57: Extended timeout for reading comprehension (5 minutes)
-  const TIMEOUT_MS = 300000; // 5 minutes
+  // MISSION 57: Optimized timeout - reduce from 5min to 60s for better UX
+  const TIMEOUT_MS = 60000; // 60 seconds - reduced for faster fallback
   const startTime = Date.now();
   
-  logger.time(`MISSION 57: Setting ${TIMEOUT_MS/1000}s timeout for reading generation`);
+  logger.info(`📖 MISSION 55: Starting ${subject} reading generation (${difficulty}, ${passageType}, ${questionCount} questions)`);
   
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
-    logger.error(`MISSION 57: Reading generation timeout after ${TIMEOUT_MS}ms`);
+    logger.warn(`⏱️ MISSION 57: Timeout after ${TIMEOUT_MS/1000}s - triggering fallback`);
     controller.abort(new Error('TIMEOUT_EXCEEDED'));
   }, TIMEOUT_MS);
   
-  // Log progress every 30s
+  // Log progress every 15s (more frequent updates)
+  let lastProgress = 0;
   const progressInterval = setInterval(() => {
     const elapsed = Date.now() - startTime;
-    logger.progress(`MISSION 57: Still generating reading passage... (${elapsed/1000}s elapsed)`);
-  }, 30000);
+    if (elapsed - lastProgress >= 15000) {
+      logger.progress(`⏳ Generating... ${(elapsed/1000).toFixed(1)}s elapsed`);
+      lastProgress = elapsed;
+    }
+  }, 5000);
   
   try {
     const response = await fetch('https://api.moonshot.cn/v1/chat/completions', {
@@ -1577,7 +1581,8 @@ Important:
           role: 'user',
           content: prompt + "\n\nRespond with valid JSON only, no markdown formatting."
         }],
-        max_tokens: 8000, // Large for passage + questions
+        max_tokens: 4000, // REDUCED from 8000 for faster generation
+        temperature: 0.7,
       }),
       signal: controller.signal,
     });
@@ -1585,7 +1590,8 @@ Important:
     clearTimeout(timeoutId);
     clearInterval(progressInterval);
     
-    logger.http(`MISSION 57: HTTP Status: ${response.status} (${(Date.now() - startTime)/1000}s total)`);
+    const httpTime = ((Date.now() - startTime)/1000).toFixed(1);
+    logger.http(`📡 HTTP ${response.status} | ${httpTime}s`);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -1605,11 +1611,12 @@ Important:
     // Try to parse as JSON
     try {
       const parsed = JSON.parse(content);
-      logger.success(`MISSION 57: Generated reading passage: "${parsed.title}" (${parsed.wordCount} words, ${parsed.questions?.length} questions) in ${(Date.now() - startTime)/1000}s`);
+      const duration = ((Date.now() - startTime)/1000).toFixed(1);
+      logger.success(`✅ Generated: "${parsed.title}" (${parsed.wordCount} words, ${parsed.questions?.length} questions) in ${duration}s`);
       return content;
     } catch (e) {
       // If parse fails, return the text anyway
-      logger.warn(`MISSION 57: Non-JSON response, returning raw (${(Date.now() - startTime)/1000}s)`);
+      logger.warn(`⚠️ Non-JSON response after ${((Date.now() - startTime)/1000).toFixed(1)}s`);
       return content;
     }
 
@@ -1617,14 +1624,14 @@ Important:
     clearTimeout(timeoutId);
     clearInterval(progressInterval);
     
-    // MISSION 57: Better error handling
+    // MISSION 57: Better error handling with clearer messages
     if (error.message === 'TIMEOUT_EXCEEDED' || error.name === 'AbortError') {
-      const elapsed = Date.now() - startTime;
-      logger.error(`MISSION 57: Timeout error after ${elapsed/1000}s`);
-      throw new Error(`Reading generation timeout: Operation took longer than ${TIMEOUT_MS/1000} seconds (${elapsed/1000}s elapsed). Try reducing question count to 5.`);
+      const elapsed = ((Date.now() - startTime)/1000).toFixed(1);
+      logger.error(`⏱️ Timeout after ${elapsed}s - using fallback`);
+      throw new Error(`TIMEOUT: Reading generation took too long (${elapsed}s). Using pre-generated content.`);
     }
     
-    logger.error('MISSION 57: Reading generation error:', error.message);
+    logger.error('❌ Reading generation error:', error.message);
     throw error;
   }
 }

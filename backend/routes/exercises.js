@@ -12,9 +12,19 @@ const logger = require('../utils/logger');
 // ============================================
 // MULTER CONFIGURATION
 // ============================================
+
+// FIX: Ensure uploads directory exists with absolute path
+const UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'exercises');
+
+// Create directory if it doesn't exist
+if (!fsSync.existsSync(UPLOAD_DIR)) {
+  fsSync.mkdirSync(UPLOAD_DIR, { recursive: true });
+  console.log(`📁 Created upload directory: ${UPLOAD_DIR}`);
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/exercises/');
+    cb(null, UPLOAD_DIR);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -460,7 +470,7 @@ Return JSON:
 // GENERATE READING COMPREHENSION - MISSION 55
 // ============================================
 router.post('/generate-reading', authenticateToken, async (req, res) => {
-  const { subject, difficulty = 'medium', passageType = 'narrative', numQuestions = 10 } = req.body;
+  const { subject, difficulty = 'medium', passageType = 'narrative', numQuestions = 5 } = req.body;
   
   // Validate input
   if (!subject || !['English', 'Chinese'].includes(subject)) {
@@ -470,11 +480,17 @@ router.post('/generate-reading', authenticateToken, async (req, res) => {
     });
   }
   
-  const count = Math.min(Math.max(numQuestions, 5), 15); // 5-15 questions
+  // OPTIMIZED: Default to 5 questions for faster generation, max 10
+  const count = Math.min(Math.max(numQuestions, 3), 10);
   
-  logger.mission(55, `Generating reading comprehension: ${subject} | ${difficulty} | ${passageType} | ${count} questions`);
+  logger.info(`📚 Reading Comprehension: ${subject} | ${difficulty} | ${passageType} | ${count} Qs`);
   
   try {
+    // Set response timeout slightly higher than API timeout
+    req.setTimeout(65000, () => {
+      logger.warn('⏱️ Request timeout - sending fallback');
+    });
+    
     const response = await kimiService.generateReadingPassage(
       subject,
       difficulty,
@@ -488,37 +504,35 @@ router.post('/generate-reading', authenticateToken, async (req, res) => {
     try {
       readingData = JSON.parse(response);
     } catch (e) {
-      logger.error('Failed to parse reading response as JSON:', e.message);
-      // Return raw response for debugging
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to parse reading comprehension data',
-        raw: response.substring(0, 500)
-      });
+      logger.error('Failed to parse reading response:', e.message);
+      throw new Error('Parse error');
     }
     
     // Validate structure
     if (!readingData.passage || !readingData.questions || readingData.questions.length === 0) {
-      logger.error('Invalid reading data structure');
-      return res.status(500).json({
-        success: false,
-        message: 'Invalid reading comprehension data structure'
-      });
+      throw new Error('Invalid structure');
     }
     
-    logger.success(`MISSION 55: Generated reading: "${readingData.title}" (${readingData.wordCount} words, ${readingData.questions.length} questions)`);
+    logger.success(`✅ Generated: "${readingData.title}" (${readingData.wordCount} words)`);
     
     res.json({
       success: true,
       ...readingData,
       isReadingComprehension: true,
+      _aiGenerated: true,
       generatedAt: new Date().toISOString()
     });
     
   } catch (error) {
-    logger.error('MISSION 55: Generate reading error:', error.message);
+    const isTimeout = error.message.includes('TIMEOUT') || error.message.includes('timeout');
     
-    // Return fallback data
+    if (isTimeout) {
+      logger.warn('⏱️ Using fallback due to timeout');
+    } else {
+      logger.error('❌ Generation error:', error.message);
+    }
+    
+    // Return fallback data immediately on any error
     const fallbackData = generateReadingFallback(subject, difficulty, passageType, count);
     
     res.json({
@@ -526,56 +540,143 @@ router.post('/generate-reading', authenticateToken, async (req, res) => {
       ...fallbackData,
       isReadingComprehension: true,
       _fallback: true,
+      _fallbackReason: isTimeout ? 'timeout' : 'error',
       generatedAt: new Date().toISOString()
     });
   }
 });
 
-// Fallback generator for reading comprehension
+// Enhanced fallback generator with realistic content
 function generateReadingFallback(subject, difficulty, passageType, count) {
   const isChinese = subject === 'Chinese';
   
-  if (isChinese) {
+  // Realistic English passages
+  const englishPassages = {
+    narrative: {
+      title: 'The Unexpected Journey',
+      passage: `Tom had always been curious about the old house at the end of his street. One rainy afternoon, while walking home from school, he noticed the front door was slightly open. Against his better judgment, he decided to investigate.
+
+The hallway was dark and dusty, with paintings of people long forgotten hanging on the walls. As Tom explored further, he discovered a room filled with old books and maps. One map in particular caught his attention - it showed hidden tunnels beneath the town that nobody knew existed.
+
+Suddenly, Tom heard footsteps upstairs. His heart raced as he realized he might not be alone. Gathering his courage, he decided it was time to leave, but not before taking a photo of the mysterious map with his phone. Little did he know that this discovery would lead to the greatest adventure of his life.`,
+      wordCount: 156,
+      vocab: [
+        { word: 'investigate', meaning: 'to examine carefully', sentence: 'The detective came to investigate the crime.' },
+        { word: 'against his better judgment', meaning: 'despite knowing it might be wrong', sentence: 'Against his better judgment, he ate the expired food.' }
+      ]
+    },
+    expository: {
+      title: 'The Science of Sleep',
+      passage: `Sleep is one of the most important processes for human health, yet many teenagers do not get enough of it. Scientists have discovered that during sleep, the brain clears away toxic waste products that build up during the day. This process, called the glymphatic system, works like a cleaning service for your brain.
+
+Teenagers need between 8 to 10 hours of sleep per night because their brains and bodies are still developing. Lack of sleep can affect memory, concentration, and even emotional control. Studies show that students who sleep well perform better in exams and have better mental health.
+
+To improve sleep quality, experts recommend avoiding screens one hour before bed, keeping a regular sleep schedule, and creating a cool, dark sleeping environment. These simple habits can make a significant difference in overall well-being.`,
+      wordCount: 148,
+      vocab: [
+        { word: 'toxic', meaning: 'poisonous or harmful', sentence: 'The factory released toxic chemicals into the river.' },
+        { word: 'concentration', meaning: 'the ability to focus attention', sentence: 'The quiet library helped improve my concentration.' }
+      ]
+    }
+  };
+  
+  // Realistic Chinese passages
+  const chinesePassages = {
+    narrative: {
+      title: '雨後的彩虹',
+      passage: `小明放學回家的時候，天空突然烏雲密佈，下起了傾盆大雨。他沒有帶雨傘，只好躲在學校的走廊下等待雨停。
+
+雨勢漸漸小了，小明決定冒雨跑回家。就在他奔跑的時候，雨突然停了，太陽從雲層中探出頭來。小明抬頭一看，驚喜地發現天邊掛著一道美麗的彩虹。
+
+彩虹有七種顏色，紅、橙、黃、綠、青、藍、紫，像一座彩色的橋樑橫跨天空。小明停下腳步，靜靜地欣賞這大自然的美景。他想，雖然被雨淋濕了，但能看到這麼美的彩虹，一切都是值得的。
+
+從那天起，小明明白了：困難過後，往往會有美好的事物等待著我們。`,
+      wordCount: 168,
+      vocab: [
+        { word: '烏雲密佈', meaning: '天空充滿黑雲', sentence: '颱風來之前，天空烏雲密佈。' },
+        { word: '傾盆大雨', meaning: '雨下得很大', sentence: '外面下著傾盆大雨，我們無法出門。' }
+      ]
+    },
+    expository: {
+      title: '保護環境的重要性',
+      passage: `地球是我們唯一的家園，保護環境是每個人的責任。隨著科技的發展和人口的增長，環境污染問題日益嚴重。空氣污染、水污染和垃圾問題都在威脅著我們的健康。
+
+香港作為一個國際大都市，每天產生大量的廢物。如果我們不加以控制，這些廢物將會堆積如山，影響我們的生活質素。因此，政府推行了垃圾分類和回收計劃，鼓勵市民減少使用一次性塑膠製品。
+
+作為學生，我們可以從小事做起：自備水壺、使用環保袋、節約用水用電。這些小小的行動，累積起來就能對環境產生巨大的影響。讓我們一起努力，為下一代創造一個更美好的地球。`,
+      wordCount: 175,
+      vocab: [
+        { word: '日益嚴重', meaning: '一天比一天厲害', sentence: '交通擠塞問題日益嚴重。' },
+        { word: '累積', meaning: '一點一點地聚集', sentence: '知識需要長期累積。' }
+      ]
+    }
+  };
+  
+  // Select passage based on type
+  const passageData = isChinese 
+    ? chinesePassages[passageType] || chinesePassages.narrative
+    : englishPassages[passageType] || englishPassages.narrative;
+  
+  // Generate questions based on passage
+  const questions = isChinese 
+    ? generateChineseQuestions(passageData, count)
+    : generateEnglishQuestions(passageData, count);
+  
+  return {
+    title: passageData.title,
+    subject,
+    difficulty,
+    passageType,
+    passage: passageData.passage,
+    wordCount: passageData.wordCount,
+    vocabulary: passageData.vocab,
+    questions
+  };
+}
+
+// Helper to generate English questions
+function generateEnglishQuestions(passage, count) {
+  const qTypes = ['main_idea', 'detail', 'vocabulary', 'inference'];
+  const questionBank = [
+    { type: 'main_idea', q: 'What is the main idea of this passage?', options: ['A. The importance of curiosity', 'B. A discovery that leads to adventure', 'C. The dangers of old houses', 'D. Rainy day activities'], answer: 'B', explain: 'The passage focuses on Tom discovering a mysterious map that will lead to an adventure.' },
+    { type: 'detail', q: 'What did Tom notice about the old house?', options: ['A. The windows were broken', 'B. The front door was open', 'C. There were lights on inside', 'D. A dog was barking'], answer: 'B', explain: 'The text states "he noticed the front door was slightly open."' },
+    { type: 'vocabulary', q: 'What does "investigate" mean in this context?', options: ['A. To run away quickly', 'B. To examine carefully', 'C. To ignore completely', 'D. To clean thoroughly'], answer: 'B', explain: '"Investigate" means to examine or look into something carefully.' },
+    { type: 'inference', q: 'Why did Tom take a photo of the map?', options: ['A. He wanted to sell it', 'B. He found it interesting and wanted to explore later', 'C. He was afraid of forgetting his way home', 'D. His teacher asked him to'], answer: 'B', explain: 'Tom took the photo because the map showed hidden tunnels, suggesting he wanted to explore them later.' },
+    { type: 'detail', q: 'How did Tom feel when he heard footsteps?', options: ['A. Excited and happy', 'B. Scared and nervous', 'C. Angry and frustrated', 'D. Bored and tired'], answer: 'B', explain: 'The text says "His heart raced" which indicates he was scared and nervous.' }
+  ];
+  
+  return Array.from({ length: count }, (_, i) => {
+    const q = questionBank[i % questionBank.length];
     return {
-      title: '閱讀理解練習（示範）',
-      subject: 'Chinese',
-      difficulty,
-      passageType,
-      passage: '這是一篇示範閱讀理解文章。在實際使用時，AI會根據你的設定生成一篇完整的文章，內容會配合所選的難度和文體。\\n\\n文章會包含適量的詞彙，並圍繞一個主題展開。學生閱讀後需要回答相關的問題，測試他們的理解能力。',
-      wordCount: 150,
-      vocabulary: [
-        { word: '示範', meaning: '作為學習的榜樣', sentence: '老師示範如何解題。' },
-        { word: '配合', meaning: '與...相適應', sentence: '這個顏色配合你的衣服。' }
-      ],
-      questions: Array.from({ length: count }, (_, i) => ({
-        type: ['段意', '詞意', '主旨', '推理'][i % 4],
-        question: `示範問題 ${i + 1}：這是${['段意理解', '詞意辨析', '主旨歸納', '推理判斷'][i % 4]}題型的示範。`,
-        options: ['A. 選項一', 'B. 選項二', 'C. 選項三', 'D. 選項四'],
-        answer: 'B',
-        explanation: '這是答案解釋的示範。在實際使用時，這裡會提供詳細的解釋。'
-      }))
+      type: q.type,
+      question: q.q,
+      options: q.options,
+      answer: q.answer,
+      explanation: q.explain
     };
-  } else {
+  });
+}
+
+// Helper to generate Chinese questions
+function generateChineseQuestions(passage, count) {
+  const questionBank = [
+    { type: '主旨', q: '這篇文章主要說明了什麼道理？', options: ['A. 下雨的壞處', 'B. 困難過後會有美好的事物', 'C. 跑步的好處', 'D. 學校的安全措施'], answer: 'B', explain: '文章結尾提到「困難過後，往往會有美好的事物等待著我們」。' },
+    { type: '細節', q: '小明為什麼躲在學校走廊？', options: ['A. 他在等人', 'B. 下大雨他沒有帶傘', 'C. 他在玩捉迷藏', 'D. 他忘記了回家的路'], answer: 'B', explain: '文中提到「他沒有帶雨傘，只好躲在學校的走廊下等待雨停」。' },
+    { type: '詞意', q: '「傾盆大雨」的意思是什麼？', options: ['A. 雨很小', 'B. 雨下得很大', 'C. 雨停了', 'D. 天空很藍'], answer: 'B', explain: '「傾盆大雨」形容雨下得很大，像整盆水倒下來一樣。' },
+    { type: '推理', q: '小明看到彩虹後有什麼感受？', options: ['A. 很生氣', 'B. 很驚喜和開心', 'C. 很無聊', 'D. 很害怕'], answer: 'B', explain: '文中提到「驚喜地發現」，表示小明感到驚喜和開心。' },
+    { type: '細節', q: '彩虹有幾種顏色？', options: ['A. 五種', 'B. 六種', 'C. 七種', 'D. 八種'], answer: 'C', explain: '文中明確提到「彩虹有七種顏色」。' }
+  ];
+  
+  return Array.from({ length: count }, (_, i) => {
+    const q = questionBank[i % questionBank.length];
     return {
-      title: 'Reading Comprehension Practice (Sample)',
-      subject: 'English',
-      difficulty,
-      passageType,
-      passage: 'This is a sample reading passage. In actual use, AI will generate a complete passage based on your settings, matching the selected difficulty and genre.\\n\\nThe passage will include appropriate vocabulary and develop around a theme. Students will need to answer related questions to test their comprehension skills.',
-      wordCount: 120,
-      vocabulary: [
-        { word: 'sample', meaning: 'a small part showing the quality of the whole', sentence: 'This is a sample of the product.' },
-        { word: 'comprehension', meaning: 'understanding', sentence: 'Reading comprehension is an important skill.' }
-      ],
-      questions: Array.from({ length: count }, (_, i) => ({
-        type: ['main_idea', 'detail', 'vocabulary', 'inference'][i % 4],
-        question: `Sample Question ${i + 1}: This demonstrates the ${['main idea', 'detail', 'vocabulary', 'inference'][i % 4]} question type.`,
-        options: ['A. Option 1', 'B. Option 2', 'C. Option 3', 'D. Option 4'],
-        answer: 'B',
-        explanation: 'This is a sample explanation. In actual use, detailed explanations will be provided here.'
-      }))
+      type: q.type,
+      question: q.q,
+      options: q.options,
+      answer: q.answer,
+      explanation: q.explain
     };
-  }
+  });
 }
 
 // ============================================
