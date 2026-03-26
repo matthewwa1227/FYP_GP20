@@ -1,3 +1,9 @@
+// ============================================
+// StudyQuest API Server
+// FYP GP20 - Main Entry Point
+// MISSION 62: Production-ready with graceful shutdown & monitoring
+// ============================================
+
 const dns = require('dns');
 dns.setDefaultResultOrder('ipv4first');
 
@@ -10,44 +16,33 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ============================================
+// DATABASE CONNECTION (import early)
+// ============================================
+const db = require('./db/connection');
+const { generalLimiter, userLimiter, healthCheck } = require('./middleware/concurrencyGuard');
+
+// ============================================
 // CORS CONFIGURATION - Production Ready
 // ============================================
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, etc.)
     if (!origin) return callback(null, true);
     
     const allowedOrigins = [
-      // Development
       'http://localhost:3000',
       'http://127.0.0.1:3000',
       'http://localhost:5000',
-      
-      // Vercel domains (frontend)
       /\.vercel\.app$/,
-      
-      // Render domains (backend - for webhooks)
       /\.onrender\.com$/,
-      
-      // Railway domains (legacy support)
       /\.railway\.app$/,
       /\.up\.railway\.app$/,
-      
-      // Fly.io domains (alternative)
       /\.fly\.dev$/,
-      
-      // Production frontend (set via env var)
       process.env.FRONTEND_URL,
-      
-      // Custom domain (if configured)
       process.env.CUSTOM_DOMAIN,
-    ].filter(Boolean); // Remove undefined/null
+    ].filter(Boolean);
     
-    // Check if origin matches any allowed pattern
     const isAllowed = allowedOrigins.some(allowed => {
-      if (allowed instanceof RegExp) {
-        return allowed.test(origin);
-      }
+      if (allowed instanceof RegExp) return allowed.test(origin);
       return allowed === origin;
     });
     
@@ -60,25 +55,119 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['Content-Range', 'X-Total-Count'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Device-ID'],
+  exposedHeaders: ['Content-Range', 'X-Total-Count', 'X-RateLimit-Limit', 'X-RateLimit-Remaining'],
 };
 
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Import database connection (after ipv4first + dotenv)
-const db = require('./db/connection');
+// ============================================
+// RATE LIMITING (MISSION 62)
+// ============================================
+// Apply general rate limit to all API routes
+app.use('/api/', generalLimiter);
 
-// Test database connection on startup
+// Apply stricter user limit to authenticated routes
+app.use('/api/sessions', userLimiter);
+app.use('/api/achievements', userLimiter);
+app.use('/api/tasks', userLimiter);
+app.use('/api/student', userLimiter);
+
+// ============================================
+// REQUEST TIMEOUT HANDLER (MISSION 62)
+// Prevents hanging requests from consuming connections
+// ============================================
+app.use((req, res, next) => {
+  // Set timeout for all requests (Render has 100s limit, we use 55s)
+  req.setTimeout(55000, () => {
+    console.error(`⏱️ Request timeout: ${req.method} ${req.path}`);
+    res.status(503).json({
+      success: false,
+      message: 'Request timeout. Please try again.',
+      code: 'REQUEST_TIMEOUT'
+    });
+  });
+  next();
+});
+
+// ============================================
+// HEALTH & MONITORING ENDPOINTS (MISSION 62)
+// ============================================
+
+// Basic health check (no rate limit)
+app.get('/api/health', async (req, res) => {
+  try {
+    const dbResult = await db.query('SELECT NOW() as time');
+    const poolMetrics = db.getPoolMetrics();
+    
+    // Determine health status
+    let status = 'healthy';
+    if (poolMetrics.utilizationPercent > 90) status = 'critical';
+    else if (poolMetrics.utilizationPercent > 70) status = 'warning';
+    
+    res.json({
+      success: true,
+      status,
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      database: {
+        connected: true,
+        responseTime: dbResult.rows[0].time,
+        pool: poolMetrics,
+      },
+      memory: {
+        used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
+        total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + 'MB',
+      }
+    });
+  } catch (err) {
+    res.status(503).json({
+      success: false,
+      status: 'unhealthy',
+      error: err.message,
+    });
+  }
+});
+
+// Detailed database health (for monitoring)
+app.get('/api/health/db', async (req, res) => {
+  try {
+    const poolMetrics = db.getPoolMetrics();
+    const maxConnections = await db.query('SHOW max_connections');
+    const currentConnections = await db.query(
+      `SELECT count(*) as count FROM pg_stat_activity WHERE datname = current_database()`
+    );
+    
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      pool: poolMetrics,
+      database: {
+        maxConnections: parseInt(maxConnections.rows[0].max_connections),
+        currentConnections: parseInt(currentConnections.rows[0].count),
+        utilizationPercent: Math.round(
+          (parseInt(currentConnections.rows[0].count) / parseInt(maxConnections.rows[0].max_connections)) * 100
+        ),
+      }
+    });
+  } catch (err) {
+    res.status(503).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
+
+// ============================================
+// DATABASE TEST ON STARTUP
+// ============================================
 (async () => {
   console.log('🔍 Testing database connection...');
   const connected = await db.testConnection();
   if (!connected) {
-    console.error(
-      '⚠️ Server started but database connection failed. Check your DATABASE_URL in .env'
-    );
+    console.error('⚠️ Database connection failed. Server will continue but functionality may be limited.');
   }
 })();
 
@@ -86,67 +175,28 @@ const db = require('./db/connection');
 // ROUTES - Organized by feature
 // ============================================
 
-// Authentication
 app.use('/api/auth', require('./routes/auth'));
-
-// Study Sessions
 app.use('/api/sessions', require('./routes/sessions'));
-
-// Student Features
 app.use('/api/student', require('./routes/student'));
-
-// Achievements System
 app.use('/api/achievements', require('./routes/achievements'));
-
-// Leaderboard
 app.use('/api/leaderboard', require('./routes/leaderboard'));
-
-// Dashboard
 app.use('/api/dashboard', require('./routes/dashboard'));
-
-// Family Connections
 app.use('/api/family', require('./routes/family'));
-
-// AI Features
 app.use('/api/ai', require('./routes/ai'));
-
-// Tasks System
 app.use('/api/tasks', require('./routes/tasks'));
-
 app.use('/api/ai/story', require('./routes/aiStory'));
-
-// Story Quest RPG Routes
 app.use('/api/storyquest', require('./routes/storyquest'));
-
 app.use('/api/schedule', require('./routes/schedule'));
-
-// Revision Mode (Document-based learning)
 app.use('/api/revision', require('./routes/revision'));
-
-// ============================================
-// NEW FEATURES v2.0
-// ============================================
-
-// Progress Monitoring & Goals
 app.use('/api/progress', require('./routes/progress'));
-
-// Parent-Teacher Rewards Collaboration
 app.use('/api/rewards', require('./routes/rewards'));
-
-// Teacher Module (Classes, Analytics, Session Verification)
 app.use('/api/teacher', require('./routes/teacher'));
-
-// Social Features (Study Groups, Friends, Challenges)
 app.use('/api/social', require('./routes/social'));
-
-// Schedule Optimizer
 app.use('/api/schedule-optimizer', require('./routes/scheduleOptimizer'));
-
-// Exercise Generator (Printable Worksheets)
 app.use('/api/exercises', require('./routes/exercises'));
 
 // ============================================
-// NEW: ROOT API ENDPOINT (FIXES YOUR /api ISSUE)
+// ROOT API ENDPOINT
 // ============================================
 app.get('/api', (req, res) => {
   res.json({
@@ -155,6 +205,7 @@ app.get('/api', (req, res) => {
     timestamp: new Date().toISOString(),
     endpoints: {
       health: '/api/health',
+      healthDb: '/api/health/db',
       auth: '/api/auth/register, /api/auth/login',
       sessions: '/api/sessions/active, /api/sessions/history',
       tasks: '/api/tasks',
@@ -162,89 +213,44 @@ app.get('/api', (req, res) => {
       achievements: '/api/achievements',
       leaderboard: '/api/leaderboard/global'
     },
-    docs: 'Check console logs for full endpoint list'
+    mission: 'MISSION 62: Concurrent Access Fixed'
   });
-});
-
-// ============================================
-// HEALTH & TEST ENDPOINTS
-// ============================================
-
-// Health check with database status
-app.get('/api/health', async (req, res) => {
-  let dbStatus = 'disconnected';
-  let dbMessage = '';
-
-  try {
-    const result = await db.query('SELECT NOW() as current_time, version() as version');
-    dbStatus = 'connected';
-    dbMessage = `Connected to PostgreSQL at ${result.rows[0].current_time}`;
-  } catch (error) {
-    dbStatus = 'error';
-    dbMessage = error.message;
-  }
-
-  res.json({
-    status: 'Server is running!',
-    timestamp: new Date(),
-    environment: process.env.NODE_ENV || 'development',
-    database: {
-      status: dbStatus,
-      message: dbMessage,
-    },
-  });
-});
-
-// Database test endpoint
-app.get('/api/db/test', async (req, res) => {
-  try {
-    const result = await db.query('SELECT COUNT(*) as student_count FROM students');
-    const achievements = await db.query('SELECT COUNT(*) as achievement_count FROM achievements');
-    const sessions = await db.query('SELECT COUNT(*) as session_count FROM study_sessions');
-    const tasks = await db.query('SELECT COUNT(*) as task_count FROM tasks');
-
-    res.json({
-      success: true,
-      message: 'Database connection successful!',
-      data: {
-        students: result.rows[0].student_count,
-        achievements: achievements.rows[0].achievement_count,
-        sessions: sessions.rows[0].session_count,
-        tasks: tasks.rows[0].task_count,
-        tables: ['students', 'study_sessions', 'achievements', 'student_achievements', 'daily_goals', 'tasks'],
-      },
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Database connection failed',
-      error: error.message,
-    });
-  }
 });
 
 // ============================================
 // ERROR HANDLERS
 // ============================================
 
-// 404 handler - AFTER all your routes
+// 404 handler
 app.use((req, res) => {
   res.status(404).json({
     success: false,
     message: 'Route not found',
     path: req.path,
-    available: [
-      '/api/health',
-      '/api/db/test',
-      '/api/auth/register',
-      '/api/auth/login'
-    ]
   });
 });
 
-// Error handler
+// Global error handler
 app.use((err, req, res, next) => {
-  console.error('❌ Error:', err.stack);
+  console.error('❌ Error:', err.message);
+  
+  // Handle specific error types
+  if (err.message?.includes('timeout')) {
+    return res.status(503).json({
+      success: false,
+      message: 'Service temporarily unavailable. Please retry.',
+      code: 'TIMEOUT'
+    });
+  }
+  
+  if (err.message?.includes('too many connections')) {
+    return res.status(503).json({
+      success: false,
+      message: 'Database overloaded. Please retry in a moment.',
+      code: 'DB_OVERLOAD'
+    });
+  }
+  
   res.status(500).json({
     success: false,
     message: 'Something went wrong!',
@@ -253,16 +259,55 @@ app.use((err, req, res, next) => {
 });
 
 // ============================================
-// START SERVER
+// SERVER STARTUP
 // ============================================
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`\n${'='.repeat(50)}`);
   console.log(`🚀 StudyQuest API Server`);
+  console.log(`🎯 MISSION 62: Concurrent Access Fixed`);
   console.log(`${'='.repeat(50)}`);
   console.log(`📍 Port: ${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`✅ http://localhost:${PORT}/api`);  // ← NOW THIS WORKS!
-
+  console.log(`📊 Pool Size: ${db.POOL_CONFIG.max} connections`);
+  console.log(`✅ http://localhost:${PORT}/api`);
   console.log(`${'='.repeat(50)}\n`);
+});
+
+// ============================================
+// GRACEFUL SHUTDOWN (MISSION 62)
+// ============================================
+
+const gracefulShutdown = async (signal) => {
+  console.log(`\n${signal} received. Starting graceful shutdown...`);
+  
+  // Stop accepting new connections
+  server.close(async () => {
+    console.log('🛑 HTTP server closed');
+    
+    // Close database pool
+    await db.closePool(10000);
+    
+    console.log('✅ Graceful shutdown complete');
+    process.exit(0);
+  });
+  
+  // Force shutdown after 15 seconds
+  setTimeout(() => {
+    console.error('⚠️ Forced shutdown after timeout');
+    process.exit(1);
+  }, 15000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle uncaught errors
+process.on('uncaughtException', (err) => {
+  console.error('💥 Uncaught Exception:', err);
+  gracefulShutdown('UNCAUGHT_EXCEPTION');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
 });

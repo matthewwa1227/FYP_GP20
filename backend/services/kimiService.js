@@ -1581,8 +1581,7 @@ Important:
           role: 'user',
           content: prompt + "\n\nRespond with valid JSON only, no markdown formatting."
         }],
-        max_tokens: 4000, // REDUCED from 8000 for faster generation
-        temperature: 0.7,
+        max_tokens: 4000,
       }),
       signal: controller.signal,
     });

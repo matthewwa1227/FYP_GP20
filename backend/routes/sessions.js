@@ -1,12 +1,14 @@
 // ============================================
 // StudyQuest - Study Session Routes
 // FYP GP20 - Session Management & Tracking
+// MISSION 62: Fixed for concurrent access & race conditions
 // ============================================
 
 const express = require('express');
 const router = express.Router();
-const { pool } = require('../db/connection');
+const { pool, withTransaction } = require('../db/connection');
 const { authenticateToken } = require('../middleware/auth');
+const { sessionActionLimiter } = require('../middleware/concurrencyGuard');
 const {
     calculateXP,
     calculateLevel,
@@ -18,12 +20,13 @@ const {
 // ============================================
 // POST /api/sessions/start
 // Start a new study session
+// MISSION 62: Auto-ends previous session if exists (multi-device support)
 // ============================================
-router.post('/start', authenticateToken, async (req, res) => {
+router.post('/start', authenticateToken, sessionActionLimiter, async (req, res) => {
     const client = await pool.connect();
     
     try {
-        const { subject, topic } = req.body;
+        const { subject, topic, deviceId } = req.body;
         const studentId = req.student.id;
         
         // Validate input
@@ -34,35 +37,94 @@ router.post('/start', authenticateToken, async (req, res) => {
             });
         }
         
-        // Check if user already has an active session
+        // Start transaction with row-level locking
+        await client.query('BEGIN');
+        await client.query('SET TRANSACTION ISOLATION LEVEL SERIALIZABLE');
+        
+        // MISSION 62: Lock the student's active session row (if any) to prevent race conditions
         const activeCheck = await client.query(
-            'SELECT id FROM study_sessions WHERE student_id = $1 AND is_active = true',
+            `SELECT id, subject, started_at, device_id 
+             FROM study_sessions 
+             WHERE student_id = $1 AND is_active = true
+             FOR UPDATE`, // Row-level lock!
             [studentId]
         );
         
+        let previousSession = null;
+        
         if (activeCheck.rows.length > 0) {
-            return res.status(400).json({
-                success: false,
-                message: 'You already have an active session. Please end it first.'
-            });
+            const existingSession = activeCheck.rows[0];
+            
+            // MISSION 62: Auto-end previous session from another device
+            const startedAt = new Date(existingSession.started_at);
+            const now = new Date();
+            const durationSeconds = Math.floor((now - startedAt) / 1000);
+            const durationMinutes = Math.floor(durationSeconds / 60);
+            
+            // Calculate XP for abandoned session (50% penalty for auto-end)
+            const xpEarned = Math.max(1, Math.floor(calculateXP(durationSeconds) * 0.5));
+            
+            await client.query(
+                `UPDATE study_sessions 
+                 SET ended_at = NOW(), 
+                     duration = $1,
+                     xp_earned = $2,
+                     is_active = false,
+                     status = 'auto_ended',
+                     notes = 'Auto-ended: Started new session on another device',
+                     updated_at = NOW()
+                 WHERE id = $3`,
+                [durationMinutes, xpEarned, existingSession.id]
+            );
+            
+            previousSession = {
+                id: existingSession.id,
+                subject: existingSession.subject,
+                durationSeconds,
+                xpEarned
+            };
+            
+            console.log(`🔄 Auto-ended previous session ${existingSession.id} for student ${studentId}`);
         }
         
         // Create new session
         const result = await client.query(
             `INSERT INTO study_sessions 
-            (student_id, subject, topic, started_at, is_active, status) 
-            VALUES ($1, $2, $3, NOW(), true, 'active') 
-            RETURNING *`,
-            [studentId, subject.trim(), topic ? topic.trim() : null]
+             (student_id, subject, topic, started_at, is_active, status, device_id) 
+             VALUES ($1, $2, $3, NOW(), true, 'active', $4) 
+             RETURNING *`,
+            [studentId, subject.trim(), topic ? topic.trim() : null, deviceId || null]
         );
         
-        res.status(201).json({
+        await client.query('COMMIT');
+        
+        const response = {
             success: true,
-            message: 'Study session started successfully! 📚',
+            message: previousSession 
+                ? `Previous session auto-ended. New study session started! 📚`
+                : 'Study session started successfully! 📚',
             session: result.rows[0]
-        });
+        };
+        
+        if (previousSession) {
+            response.previousSession = previousSession;
+        }
+        
+        res.status(201).json(response);
         
     } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        
+        // MISSION 62: Handle serialization failure (concurrent start attempt)
+        if (error.code === '40001' || error.message?.includes('serialization')) {
+            console.warn('⚠️ Concurrent session start detected for student:', req.student.id);
+            return res.status(409).json({
+                success: false,
+                message: 'Session start conflict. Please try again in a moment.',
+                code: 'CONCURRENT_START'
+            });
+        }
+        
         console.error('Error starting session:', error);
         res.status(500).json({ 
             success: false, 
@@ -77,132 +139,104 @@ router.post('/start', authenticateToken, async (req, res) => {
 // ============================================
 // POST /api/sessions/:sessionId/end
 // End an active study session
-// ✅ UPDATED: Now accepts duration in SECONDS
+// MISSION 62: Atomic transaction with SELECT FOR UPDATE
 // ============================================
-router.post('/:sessionId/end', authenticateToken, async (req, res) => {
-    const client = await pool.connect();
+router.post('/:sessionId/end', authenticateToken, sessionActionLimiter, async (req, res) => {
+    const { sessionId } = req.params;
+    const { notes, duration } = req.body;
+    const studentId = req.student.id;
     
     try {
-        await client.query('BEGIN');
+        // MISSION 62: Use withTransaction helper for automatic retries
+        const result = await withTransaction(async (client) => {
+            // Lock the session row
+            const sessionResult = await client.query(
+                `SELECT * FROM study_sessions 
+                 WHERE id = $1 AND student_id = $2 AND is_active = true
+                 FOR UPDATE NOWAIT`, // Fail fast if locked
+                [sessionId, studentId]
+            );
+            
+            if (sessionResult.rows.length === 0) {
+                throw new Error('SESSION_NOT_FOUND');
+            }
+            
+            const session = sessionResult.rows[0];
+            
+            // Calculate duration in SECONDS
+            let durationSeconds;
+            if (duration !== undefined && duration !== null) {
+                durationSeconds = Math.floor(duration);
+            } else {
+                const startedAt = new Date(session.started_at);
+                durationSeconds = Math.floor((Date.now() - startedAt) / 1000);
+            }
+            
+            // Check minimum duration (10 seconds)
+            if (durationSeconds < 10) {
+                throw new Error('SESSION_TOO_SHORT');
+            }
+            
+            const xpGained = calculateXP(durationSeconds);
+            const durationMinutes = Math.floor(durationSeconds / 60);
+            
+            // Lock student row for update (prevent race conditions on XP/stats)
+            const oldStatsResult = await client.query(
+                'SELECT * FROM students WHERE id = $1 FOR UPDATE',
+                [studentId]
+            );
+            const oldStats = oldStatsResult.rows[0];
+            
+            // Calculate new stats
+            const streakData = calculateStreak(oldStats.updated_at, oldStats.current_streak || 0);
+            const newXP = oldStats.xp + xpGained;
+            const newLevel = calculateLevel(newXP);
+            const newTotalStudyTime = oldStats.total_study_time + durationMinutes;
+            const newTotalSessions = oldStats.total_sessions + 1;
+            const newLongestStreak = Math.max(oldStats.longest_streak || 0, streakData.streak);
+            
+            // Update session
+            await client.query(
+                `UPDATE study_sessions 
+                 SET ended_at = NOW(), 
+                     duration = $1,  
+                     xp_earned = $2,  
+                     is_active = false, 
+                     status = 'completed',
+                     notes = $3,
+                     updated_at = NOW()
+                 WHERE id = $4`,
+                [durationMinutes, xpGained, notes || null, sessionId]
+            );
+            
+            // Update student stats atomically
+            const updateResult = await client.query(
+                `UPDATE students 
+                 SET xp = $1, 
+                     level = $2, 
+                     total_study_time = $3, 
+                     total_sessions = $4,
+                     current_streak = $5,
+                     longest_streak = $6,
+                     updated_at = NOW()
+                 WHERE id = $7
+                 RETURNING *`,
+                [newXP, newLevel, newTotalStudyTime, newTotalSessions, 
+                 streakData.streak, newLongestStreak, studentId]
+            );
+            
+            return {
+                session: { ...session, ended_at: new Date(), duration: durationMinutes, xp_earned: xpGained },
+                oldStats,
+                newStats: updateResult.rows[0],
+                durationSeconds,
+                xpGained
+            };
+        }, { retries: 3, isolationLevel: 'SERIALIZABLE' });
         
-        const { sessionId } = req.params;
-        const { notes, duration } = req.body; // duration is now in SECONDS
-        const studentId = req.student.id;
+        // Generate response
+        const { session, oldStats, newStats, durationSeconds, xpGained } = result;
         
-        // Get the active session
-        const sessionResult = await client.query(
-            `SELECT * FROM study_sessions 
-            WHERE id = $1 AND student_id = $2 AND is_active = true`,
-            [sessionId, studentId]
-        );
-        
-        if (sessionResult.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return res.status(404).json({
-                success: false,
-                message: 'Active session not found'
-            });
-        }
-        
-        const session = sessionResult.rows[0];
-        
-        // ✅ UPDATED: Calculate duration in SECONDS
-        let durationSeconds;
-        if (duration !== undefined && duration !== null) {
-            durationSeconds = Math.floor(duration);
-        } else {
-            const startedAt = new Date(session.started_at);
-            const endedAt = new Date();
-            durationSeconds = Math.floor((endedAt - startedAt) / 1000);
-        }
-        
-        // ✅ UPDATED: Check minimum duration (10 seconds instead of 1 minute)
-        if (durationSeconds < 10) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({
-                success: false,
-                message: 'Session too short. Please study for at least 10 seconds.'
-            });
-        }
-        
-        // ✅ UPDATED: Calculate XP (1 XP per 10 seconds)
-        const xpGained = calculateXP(durationSeconds);
-        
-        // Convert seconds to minutes for storage (keep backward compatibility)
-        const durationMinutes = Math.floor(durationSeconds / 60);
-        
-        console.log(`📊 Session rewards: ${durationSeconds} sec (${durationMinutes} min) = ${xpGained} XP`);
-        
-        // Get current student stats
-        const oldStatsResult = await client.query(
-            'SELECT * FROM students WHERE id = $1',
-            [studentId]
-        );
-        const oldStats = oldStatsResult.rows[0];
-        
-        // Calculate new streak
-        const streakData = calculateStreak(
-            oldStats.updated_at, 
-            oldStats.current_streak || 0
-        );
-        
-        // Update session record (store minutes for backward compatibility)
-        await client.query(
-            `UPDATE study_sessions 
-            SET ended_at = NOW(), 
-                duration = $1,  
-                xp_earned = $2,  
-                is_active = false, 
-                status = 'completed',
-                notes = $3,
-                updated_at = NOW()
-            WHERE id = $4`,
-            [durationMinutes, xpGained, notes || null, sessionId]
-        );
-        
-        // Update student stats
-        const newXP = oldStats.xp + xpGained;
-        const newLevel = calculateLevel(newXP);
-        const newTotalStudyTime = oldStats.total_study_time + durationMinutes;
-        const newTotalSessions = oldStats.total_sessions + 1;
-        const newLongestStreak = Math.max(
-            oldStats.longest_streak || 0, 
-            streakData.streak
-        );
-        
-        const updateResult = await client.query(
-            `UPDATE students 
-            SET xp = $1, 
-                level = $2, 
-                total_study_time = $3, 
-                total_sessions = $4,
-                current_streak = $5,
-                longest_streak = $6,
-                updated_at = NOW()
-            WHERE id = $7
-            RETURNING *`,
-            [
-                newXP, 
-                newLevel, 
-                newTotalStudyTime, 
-                newTotalSessions,
-                streakData.streak,
-                newLongestStreak,
-                studentId
-            ]
-        );
-        
-        const newStats = updateResult.rows[0];
-        
-        // Get updated session
-        const updatedSession = await client.query(
-            'SELECT * FROM study_sessions WHERE id = $1',
-            [sessionId]
-        );
-        
-        await client.query('COMMIT');
-        
-        // ✅ UPDATED: Generate motivational message based on duration (in seconds)
         const motivation = {
             title: durationSeconds >= 3600 ? '🌟 Amazing Focus!' :
                    durationSeconds >= 1800 ? '💪 Great Session!' :
@@ -212,25 +246,14 @@ router.post('/:sessionId/end', authenticateToken, async (req, res) => {
             message: `You studied for ${formatDuration(durationSeconds)} and earned ${xpGained} XP!`
         };
         
-        // Generate session summary
-        const summary = generateSessionSummary(
-            updatedSession.rows[0], 
-            oldStats, 
-            newStats
-        );
-        
-        // Get level progress
+        const summary = generateSessionSummary(session, oldStats, newStats);
         const levelProgress = getLevelProgress(newStats.xp, newStats.level);
         
         res.json({
             success: true,
             message: motivation.title,
-            session: updatedSession.rows[0],
-            summary: {
-                ...summary,
-                levelProgress,
-                motivation
-            },
+            session,
+            summary: { ...summary, levelProgress, motivation },
             stats: {
                 level: newStats.level,
                 xp: newStats.xp,
@@ -242,19 +265,41 @@ router.post('/:sessionId/end', authenticateToken, async (req, res) => {
         });
         
     } catch (error) {
-        await client.query('ROLLBACK');
+        // Handle specific errors
+        if (error.message === 'SESSION_NOT_FOUND') {
+            return res.status(404).json({
+                success: false,
+                message: 'Active session not found or already ended'
+            });
+        }
+        
+        if (error.message === 'SESSION_TOO_SHORT') {
+            return res.status(400).json({
+                success: false,
+                message: 'Session too short. Please study for at least 10 seconds.'
+            });
+        }
+        
+        if (error.code === '55P03' || error.message?.includes('lock not available')) {
+            return res.status(423).json({
+                success: false,
+                message: 'Session is being processed by another request. Please try again.',
+                code: 'LOCKED'
+            });
+        }
+        
         console.error('Error ending session:', error);
         res.status(500).json({ 
             success: false, 
             message: 'Failed to end session',
             error: error.message 
         });
-    } finally {
-        client.release();
     }
 });
 
-// ✅ NEW: Helper function to format duration
+// ============================================
+// Helper function to format duration
+// ============================================
 function formatDuration(seconds) {
     if (seconds < 60) {
         return `${seconds} seconds`;
@@ -277,9 +322,9 @@ router.get('/active', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT * FROM study_sessions 
-            WHERE student_id = $1 AND is_active = true
-            ORDER BY started_at DESC
-            LIMIT 1`,
+             WHERE student_id = $1 AND is_active = true
+             ORDER BY started_at DESC
+             LIMIT 1`,
             [req.student.id]
         );
         
@@ -291,18 +336,17 @@ router.get('/active', authenticateToken, async (req, res) => {
             });
         }
         
-        // Calculate current duration
         const session = result.rows[0];
         const startedAt = new Date(session.started_at);
         const now = new Date();
-        const currentDuration = Math.floor((now - startedAt) / (1000 * 60)); // Still in minutes for display
+        const currentDurationMinutes = Math.floor((now - startedAt) / (1000 * 60));
         
         res.json({
             success: true,
             hasActiveSession: true,
             session: {
                 ...session,
-                currentDuration
+                currentDuration: currentDurationMinutes
             }
         });
         
@@ -331,7 +375,6 @@ router.get('/history', authenticateToken, async (req, res) => {
         `;
         const params = [req.student.id];
         
-        // Filter by subject if provided
         if (subject) {
             query += ` AND subject = $${params.length + 1}`;
             params.push(subject);
@@ -342,7 +385,6 @@ router.get('/history', authenticateToken, async (req, res) => {
         
         const result = await pool.query(query, params);
         
-        // Get total count
         let countQuery = 'SELECT COUNT(*) FROM study_sessions WHERE student_id = $1 AND status = \'completed\'';
         const countParams = [req.student.id];
         if (subject) {
@@ -381,7 +423,6 @@ router.get('/stats', authenticateToken, async (req, res) => {
     try {
         const studentId = req.student.id;
         
-        // Get overall stats
         const statsResult = await pool.query(
             'SELECT * FROM students WHERE id = $1',
             [studentId]
@@ -396,7 +437,6 @@ router.get('/stats', authenticateToken, async (req, res) => {
         
         const student = statsResult.rows[0];
         
-        // Get subject breakdown
         const subjectResult = await pool.query(
             `SELECT 
                 subject,
@@ -410,7 +450,6 @@ router.get('/stats', authenticateToken, async (req, res) => {
             [studentId]
         );
         
-        // Get recent activity (last 7 days)
         const activityResult = await pool.query(
             `SELECT 
                 DATE(started_at) as study_date,
@@ -425,7 +464,6 @@ router.get('/stats', authenticateToken, async (req, res) => {
             [studentId]
         );
         
-        // Calculate level progress
         const levelProgress = getLevelProgress(student.xp, student.level);
         
         res.json({
@@ -458,7 +496,7 @@ router.get('/stats', authenticateToken, async (req, res) => {
 
 // ============================================
 // POST /api/sessions/abandon/:sessionId
-// Abandon an active session (for page refresh recovery)
+// Abandon an active session
 // ============================================
 router.post('/abandon/:sessionId', authenticateToken, async (req, res) => {
     try {
@@ -467,10 +505,10 @@ router.post('/abandon/:sessionId', authenticateToken, async (req, res) => {
         
         await pool.query(
             `UPDATE study_sessions 
-            SET is_active = false, 
-                status = 'abandoned',
-                ended_at = NOW()
-            WHERE id = $1 AND student_id = $2 AND is_active = true`,
+             SET is_active = false, 
+                 status = 'abandoned',
+                 ended_at = NOW()
+             WHERE id = $1 AND student_id = $2 AND is_active = true`,
             [sessionId, studentId]
         );
         
