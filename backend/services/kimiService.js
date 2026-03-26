@@ -1446,6 +1446,7 @@ Return ONLY valid JSON, no markdown, no explanations.`
 
 // ============================================
 // READING COMPREHENSION - MISSION 55
+// FULL QUALITY - Extended timeout for better content
 // ============================================
 async function generateReadingPassage(subject, difficulty, passageType, questionCount, includeVocabulary = true) {
   const apiKey = process.env.KIMI_API_KEY;
@@ -1455,6 +1456,7 @@ async function generateReadingPassage(subject, difficulty, passageType, question
   
   const isChinese = subject === 'Chinese' || subject === '中文';
   
+  // FULL DETAIL PROMPTS for high quality content
   const prompt = isChinese
     ? `生成一篇中文閱讀理解練習。難度：${difficulty}。文體：${passageType}。
 
@@ -1546,27 +1548,27 @@ Important:
 - Questions must have unambiguous answers
 - Topics: school life, social issues, culture, biographies, science, or general interest`;
 
-  // MISSION 57: Optimized timeout - reduce from 5min to 60s for better UX
-  const TIMEOUT_MS = 60000; // 60 seconds - reduced for faster fallback
+  // EXTENDED TIMEOUT: 3 minutes for high quality generation
+  const TIMEOUT_MS = 180000; // 3 minutes
   const startTime = Date.now();
   
-  logger.info(`📖 MISSION 55: Starting ${subject} reading generation (${difficulty}, ${passageType}, ${questionCount} questions)`);
+  logger.info(`📖 MISSION 55: Starting ${subject} reading generation (${difficulty}, ${passageType}, ${questionCount} questions, timeout: 3min)`);
   
   const controller = new AbortController();
   const timeoutId = setTimeout(() => {
-    logger.warn(`⏱️ MISSION 57: Timeout after ${TIMEOUT_MS/1000}s - triggering fallback`);
+    logger.warn(`⏱️ Timeout after 3 minutes - using fallback`);
     controller.abort(new Error('TIMEOUT_EXCEEDED'));
   }, TIMEOUT_MS);
   
-  // Log progress every 15s (more frequent updates)
+  // Log progress every 30s (3 minute timeout)
   let lastProgress = 0;
   const progressInterval = setInterval(() => {
     const elapsed = Date.now() - startTime;
-    if (elapsed - lastProgress >= 15000) {
-      logger.progress(`⏳ Generating... ${(elapsed/1000).toFixed(1)}s elapsed`);
+    if (elapsed - lastProgress >= 30000) {
+      logger.progress(`⏳ Still generating... ${(elapsed/1000).toFixed(0)}s / 180s`);
       lastProgress = elapsed;
     }
-  }, 5000);
+  }, 10000);
   
   try {
     const response = await fetch('https://api.moonshot.cn/v1/chat/completions', {
@@ -1579,9 +1581,9 @@ Important:
         model: 'kimi-k2.5',
         messages: [{
           role: 'user',
-          content: prompt + "\n\nRespond with valid JSON only, no markdown formatting."
+          content: prompt
         }],
-        max_tokens: 4000,
+        max_tokens: 8000, // Maximum tokens for full quality content
       }),
       signal: controller.signal,
     });
@@ -1623,11 +1625,10 @@ Important:
     clearTimeout(timeoutId);
     clearInterval(progressInterval);
     
-    // MISSION 57: Better error handling with clearer messages
+    // Better error handling with clearer messages
     if (error.message === 'TIMEOUT_EXCEEDED' || error.name === 'AbortError') {
-      const elapsed = ((Date.now() - startTime)/1000).toFixed(1);
-      logger.error(`⏱️ Timeout after ${elapsed}s - using fallback`);
-      throw new Error(`TIMEOUT: Reading generation took too long (${elapsed}s). Using pre-generated content.`);
+      logger.error(`⏱️ Timeout after 3 minutes - using fallback`);
+      throw new Error(`TIMEOUT: Reading generation timed out after 3 minutes. Using pre-generated content.`);
     }
     
     logger.error('❌ Reading generation error:', error.message);

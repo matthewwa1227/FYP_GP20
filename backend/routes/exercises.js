@@ -480,14 +480,14 @@ router.post('/generate-reading', authenticateToken, async (req, res) => {
     });
   }
   
-  // OPTIMIZED: Default to 5 questions for faster generation, max 10
-  const count = Math.min(Math.max(numQuestions, 3), 10);
+  // Allow 5-15 questions based on user preference
+  const count = Math.min(Math.max(numQuestions, 5), 15);
   
   logger.info(`📚 Reading Comprehension: ${subject} | ${difficulty} | ${passageType} | ${count} Qs`);
   
   try {
-    // Set response timeout slightly higher than API timeout
-    req.setTimeout(65000, () => {
+    // EXTENDED TIMEOUT: 3 min 10s for high quality generation
+    req.setTimeout(190000, () => {
       logger.warn('⏱️ Request timeout - sending fallback');
     });
     
