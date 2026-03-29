@@ -83,30 +83,74 @@ router.post('/chat', async (req, res) => {
     const messages = [
       {
         role: 'system',
-        content: `You are Study Buddy, a helpful study assistant for Hong Kong secondary students (Form 1-3, ages 12-15).
+        content: `You are Study Buddy, a comprehensive AI learning companion for Hong Kong students.
 
-Your personality:
-- Friendly and encouraging
-- Patient with explanations
-- Use simple, clear language
-- Give examples when helpful
-- Keep responses concise (2-4 paragraphs max)
+🎯 YOUR CAPABILITIES - Let students know you can help with:
 
-You can help with:
-- Explaining school subjects (Math, Science, History, English, Chinese)
-- Homework questions
-- Study tips and techniques
-- Test preparation
-- Understanding concepts
-- Analyzing images (worksheets, diagrams, problems)
+📚 KNOWLEDGE & RESEARCH
+- Answer questions across any topic: Science, History, Coding, Creative Writing, Analysis
+- Explain complex concepts step-by-step with age-appropriate language
+- Provide examples from Hong Kong context (MTR, local culture, DSE curriculum)
+- Connect learning to real-world applications
+
+💻 WORKING WITH DATA & FILES
+- Analyze images: worksheets, diagrams, charts, problems, handwriting
+- Read and interpret text from uploaded images
+- Help with data analysis and statistics
+- Assist with spreadsheet formulas and calculations
+
+🖼️ IMAGE CAPABILITIES
+- "See" and understand uploaded images
+- Describe what's in photos or diagrams
+- Read text from worksheets or notes
+- Analyze charts and graphs
+- Help solve problems shown in images using Socratic method
+
+💻 CODE & TECHNICAL HELP
+- Write and debug code in Python, JavaScript, HTML/CSS, and more
+- Explain programming concepts step-by-step
+- Help with computer science assignments
+- Create simple scripts and programs
+
+✍️ WRITING & CONTENT CREATION
+- Draft essays, reports, and creative writing
+- Help with email writing and formal correspondence
+- Assist with Chinese and English composition
+- Provide writing feedback and suggestions
+
+🌐 TRANSLATION & LANGUAGE
+- Translate between English and Chinese
+- Explain grammar concepts
+- Help with vocabulary building
+- Practice conversation in different languages
+
+🧠 STUDY SKILLS
+- Provide study tips and techniques (Pomodoro, active recall, spaced repetition)
+- Help create study plans and schedules
+- Suggest memory techniques and mnemonics
+- Test preparation strategies
+
+PERSONALITY:
+- Friendly, encouraging, and patient
+- Use age-appropriate language for Hong Kong students
+- Celebrate effort and progress
+- Keep responses concise but comprehensive
+- Use emojis to be engaging but not excessive
+
+TEACHING APPROACH:
+- Use Socratic method: guide rather than just give answers
+- Break complex problems into smaller steps
+- Ask guiding questions to help students discover answers
+- Provide hints before giving solutions
+- Only give direct answers after 3+ attempts or if explicitly asked
 
 When analyzing images:
-- Describe what you see
-- Explain the content clearly
-- Answer questions about the image
-- Help solve problems shown in the image
+- Describe what you see clearly
+- Reference specific details from the image
+- If it's a homework problem, guide through it step-by-step
+- Ask what the student has tried before giving hints
 
-Always be supportive and never make the student feel bad for asking questions.`
+Always be supportive and create a safe space for learning!`
       },
       ...context.map(msg => ({
         role: msg.role,
@@ -155,6 +199,181 @@ Always be supportive and never make the student feel bad for asking questions.`
       success: false,
       error: 'Failed to get response from Study Buddy',
       response: "I'm having trouble thinking right now. Can you try again in a moment? 🤔"
+    });
+  }
+});
+
+// ============================================
+// CAPABILITIES - Get AI capabilities info
+// ============================================
+router.get('/capabilities', async (req, res) => {
+  try {
+    const capabilities = {
+      success: true,
+      categories: [
+        {
+          id: 'knowledge',
+          title: '📚 Knowledge & Research',
+          description: 'Ask me anything! Science, History, Coding, Creative Writing, Analysis, and more.',
+          examples: [
+            'Explain photosynthesis like I\'m 12',
+            'What caused World War II?',
+            'How do I write a good essay introduction?',
+            'Help me understand Pythagorean theorem'
+          ]
+        },
+        {
+          id: 'images',
+          title: '🖼️ Image Analysis',
+          description: 'Upload images and I\'ll analyze them! Worksheets, diagrams, charts, problems, and more.',
+          examples: [
+            'Help me solve this math problem (upload image)',
+            'What does this diagram show?',
+            'Read the text in this photo',
+            'Explain this chart to me'
+          ]
+        },
+        {
+          id: 'coding',
+          title: '💻 Coding & Programming',
+          description: 'Write and debug code in Python, JavaScript, HTML/CSS, and more.',
+          examples: [
+            'Write a Python function to calculate factorial',
+            'Debug this JavaScript code',
+            'Explain what this code does',
+            'Help me create a simple calculator app'
+          ]
+        },
+        {
+          id: 'writing',
+          title: '✍️ Writing & Content',
+          description: 'Draft essays, reports, emails, creative writing, and get feedback.',
+          examples: [
+            'Help me write an email to my teacher',
+            'Give me feedback on this essay paragraph',
+            'Help me start a creative story',
+            'How do I structure a book report?'
+          ]
+        },
+        {
+          id: 'language',
+          title: '🌐 Translation & Language',
+          description: 'Translate between English and Chinese, explain grammar, build vocabulary.',
+          examples: [
+            'Translate this to Chinese',
+            'Explain the difference between affect and effect',
+            'How do I say "thank you" formally in English?',
+            'Help me practice English conversation'
+          ]
+        },
+        {
+          id: 'study',
+          title: '🧠 Study Skills',
+          description: 'Study techniques, memory tips, test prep strategies, and study plans.',
+          examples: [
+            'What\'s the best way to memorize vocabulary?',
+            'Help me create a study schedule',
+            'How do I prepare for a DSE exam?',
+            'Give me tips for staying focused'
+          ]
+        },
+        {
+          id: 'data',
+          title: '📊 Data & Analysis',
+          description: 'Analyze data, create charts, help with statistics and calculations.',
+          examples: [
+            'Help me understand this data',
+            'How do I calculate the average?',
+            'Explain what correlation means',
+            'Help me organize this information'
+          ]
+        },
+        {
+          id: 'homework',
+          title: '📝 Homework Help',
+          description: 'Get guidance on homework using the Socratic method - I\'ll guide you to the answer!',
+          examples: [
+            'I\'m stuck on this problem, can you give me a hint?',
+            'How do I approach this question?',
+            'What formula should I use here?',
+            'Check my work on this problem'
+          ]
+        }
+      ]
+    };
+    
+    res.json(capabilities);
+  } catch (error) {
+    console.error('Capabilities error:', error);
+    res.status(500).json({ success: false, error: 'Failed to load capabilities' });
+  }
+});
+
+// ============================================
+// QUICK ACTIONS - Pre-defined helpful responses
+// ============================================
+router.post('/quick-action', async (req, res) => {
+  try {
+    const { action, context = {} } = req.body;
+    const kimiService = require('../services/kimiService');
+    
+    const userContext = {
+      full_name: req.user?.username || 'Student',
+      level: req.user?.level || 1,
+      xp: req.user?.xp || 0,
+      current_streak: req.user?.current_streak || 0,
+      ageTier: req.user?.ageTier,
+      formLevel: req.user?.formLevel
+    };
+    
+    let prompt = '';
+    let response = '';
+    
+    switch (action) {
+      case 'explain_concept':
+        prompt = `Explain the concept "${context.topic || 'learning'}" to a Hong Kong student in a simple, engaging way. Use analogies and examples they can relate to. Keep it under 150 words.`;
+        break;
+        
+      case 'study_tips':
+        prompt = `Give 3-5 quick study tips for a Hong Kong student studying ${context.subject || 'for exams'}. Make them practical and actionable.`;
+        break;
+        
+      case 'motivation':
+        prompt = `Give an encouraging, motivational message to a student who might be feeling stressed or unmotivated. Keep it warm and supportive, under 100 words. Reference their hero journey in learning.`;
+        break;
+        
+      case 'practice_problem':
+        prompt = `Generate a practice ${context.subject || 'math'} problem appropriate for a Hong Kong secondary student. Include the problem and the answer (hidden until they try).`;
+        break;
+        
+      case 'memory_trick':
+        prompt = `Share a memory technique or mnemonic for remembering ${context.topic || 'information'}. Make it creative and memorable.`;
+        break;
+        
+      default:
+        return res.status(400).json({ success: false, error: 'Unknown action' });
+    }
+    
+    const messages = [
+      { role: 'system', content: 'You are a helpful study assistant. Be concise and encouraging.' },
+      { role: 'user', content: prompt }
+    ];
+    
+    response = await kimiService.sendMessageToKimi(messages, { maxTokens: 800 });
+    
+    res.json({
+      success: true,
+      action,
+      response,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('Quick action error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to process quick action',
+      response: 'Let me help you with that! What would you like to know?' 
     });
   }
 });
