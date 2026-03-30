@@ -26,6 +26,7 @@ const { generalLimiter, userLimiter, healthCheck } = require('./middleware/concu
 // ============================================
 const corsOptions = {
   origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, etc)
     if (!origin) return callback(null, true);
     
     const allowedOrigins = [
@@ -51,7 +52,10 @@ const corsOptions = {
       callback(null, true);
     } else {
       console.warn(`⚠️ CORS blocked origin: ${origin}`);
-      callback(new Error(`Origin ${origin} not allowed by CORS`));
+      // TEMPORARY: Allow all origins for debugging
+      // callback(new Error(`Origin ${origin} not allowed by CORS`));
+      console.log(`⚠️ TEMP: Allowing blocked origin for debugging: ${origin}`);
+      callback(null, true);
     }
   },
   credentials: true,
