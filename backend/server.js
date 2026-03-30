@@ -32,6 +32,7 @@ const corsOptions = {
       'http://localhost:3000',
       'http://127.0.0.1:3000',
       'http://localhost:5000',
+      'https://frontend-beta-ten-26.vercel.app', // Your specific Vercel URL
       /\.vercel\.app$/,
       /\.onrender\.com$/,
       /\.railway\.app$/,
