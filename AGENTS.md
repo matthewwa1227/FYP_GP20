@@ -60,6 +60,9 @@ FYP_GP20/
 │   ├── server.js               # Express app entry point
 │   ├── package.json            # Backend dependencies
 │   ├── .env                    # Environment variables (NEVER COMMIT)
+│   ├── Dockerfile              # Docker config for Fly.io
+│   ├── railway.json            # Railway deployment config
+│   ├── render.yaml             # Render deployment blueprint
 │   │
 │   ├── routes/                 # API route handlers
 │   │   ├── auth.js             # Authentication (register/login/onboarding)
@@ -88,6 +91,7 @@ FYP_GP20/
 │   │
 │   ├── middleware/             # Express middleware
 │   │   ├── auth.js             # JWT authentication
+│   │   ├── concurrencyGuard.js # Rate limiting & health checks
 │   │   └── scheduleGuard.js    # Schedule access control
 │   │
 │   ├── services/               # External service integrations
@@ -98,7 +102,7 @@ FYP_GP20/
 │   │   └── Task.js             # Task model
 │   │
 │   ├── db/                     # Database
-│   │   └── connection.js       # PostgreSQL connection pool
+│   │   └── connection.js       # PostgreSQL connection pool with retries
 │   │
 │   ├── migrations/             # SQL schema migrations
 │   │   ├── 001_initial_schema.sql
@@ -110,7 +114,11 @@ FYP_GP20/
 │   │   ├── 008_revision_mode.sql
 │   │   ├── 011_comprehensive_features.sql
 │   │   ├── 012_fix_role_constraint.sql
-│   │   └── 013_ai_media.sql
+│   │   ├── 013_ai_media.sql
+│   │   └── 014_concurrent_access_fix.sql
+│   │
+│   ├── scripts/                # Utility scripts
+│   │   └── migrate.js          # Database migration runner
 │   │
 │   └── uploads/                # File upload storage
 │       └── exercises/
@@ -119,11 +127,14 @@ FYP_GP20/
 │   ├── package.json            # Frontend dependencies
 │   ├── tailwind.config.js      # Tailwind theme (pixel game style)
 │   ├── postcss.config.js       # PostCSS configuration
+│   ├── vercel.json             # Vercel deployment config
+│   ├── railway.json            # Railway deployment config
 │   ├── public/                 # Static assets
 │   └── src/
 │       ├── App.js              # React router configuration
 │       ├── index.js            # App entry point
 │       ├── index.css           # Global styles (Press Start 2P font)
+│       ├── setupTests.js       # Test configuration
 │       │
 │       ├── components/
 │       │   ├── auth/           # Login.jsx, Register.jsx
@@ -143,13 +154,30 @@ FYP_GP20/
 │       │   ├── profile/        # Profile.jsx
 │       │   ├── parent/         # ParentDashboard.jsx, LinkStudentPage.jsx
 │       │   ├── portal/         # ParentPortal.jsx, ConnectParent.jsx
+│       │   ├── layout/         # SideNavBar.jsx, TopAppBar.jsx
+│       │   ├── questlog/       # QuestCard.jsx, HeroStatusSidebar.jsx
+│       │   ├── ui/             # Reusable UI components
 │       │   └── shared/         # Navbar.jsx, PixelButton.jsx, PixelCard.jsx
+│       │
+│       ├── context/
+│       │   └── ThemeContext.jsx # Dark mode management
+│       │
+│       ├── hooks/
+│       │   └── useStudySession.js # Custom study session hook
+│       │
+│       ├── pages/              # Top-level page components
+│       │   ├── Dashboard.jsx
+│       │   ├── QuestLog.jsx
+│       │   ├── SocialHub.jsx
+│       │   └── StudyTimer.jsx
 │       │
 │       └── utils/
 │           ├── auth.js         # Frontend auth utilities
-│           └── api.js          # Axios API client with interceptors
+│           ├── api.js          # Axios API client with interceptors
+│           ├── familyApi.js    # Family-related API calls
+│           └── cn.js           # Class name utilities
 │
-├── studyquest-app/             # Additional React app (similar structure)
+├── studyquest-app/             # Additional React app (legacy/experimental)
 ├── Doc/                        # Project documentation
 ├── Diagram/                    # Architecture diagrams
 ├── Diagram2/                   # Additional diagrams
@@ -208,6 +236,9 @@ npm test
 psql $DATABASE_URL -f migrations/001_initial_schema.sql
 psql $DATABASE_URL -f migrations/002_add_parents.sql
 # ... continue through all migrations in numerical order
+
+# Or use the migration script
+cd backend && npm run migrate
 ```
 
 ---
@@ -235,6 +266,12 @@ KIMI_API_KEY=sk-xxxxxxxxxxxxxxxx
 FRONTEND_URL=http://localhost:3000
 ```
 
+Create `frontend/.env`:
+
+```env
+REACT_APP_API_URL=http://localhost:5000/api
+```
+
 **IMPORTANT**: The `.env` file contains sensitive credentials. Never commit it to git (already in `.gitignore`).
 
 ---
@@ -251,12 +288,16 @@ FRONTEND_URL=http://localhost:3000
 | student_achievements | Unlocked achievements per student |
 | daily_goals | Daily study targets and progress |
 | tasks | User-created tasks with priorities |
+| family_links | Parent-child relationship links |
+| ai_conversations | Chat history with Study Buddy |
+| revision_documents | Uploaded documents for revision mode |
 
 ### Key Database Features
 - **UUID Primary Keys**: All main entities use UUIDs
 - **Foreign Key Constraints**: Proper referential integrity with CASCADE deletes
 - **Triggers**: Auto-update updated_at timestamps, auto-calculate student stats
 - **Views**: student_leaderboard, recent_sessions for analytics
+- **Connection Pooling**: Configurable pool size with retry logic
 
 ---
 
@@ -316,6 +357,10 @@ FRONTEND_URL=http://localhost:3000
 - `POST /api/storyquest/learn` - Get lesson content
 - `POST /api/storyquest/question` - Generate quiz question
 
+### Health & Monitoring
+- `GET /api/health` - Server health check with DB status
+- `GET /api/health/db` - Detailed database metrics
+
 ---
 
 ## Code Style Guidelines
@@ -335,12 +380,37 @@ FRONTEND_URL=http://localhost:3000
   - 📊 - Database/query
   - 💡 - Debug/info
   - 🚀 - API calls
+  - 🔄 - Retry/warning
 
 ### SQL
 - Use uppercase for keywords (CREATE, SELECT, INSERT)
 - Use lowercase for identifiers
 - Include comments for complex queries
 - Always use parameterized queries (`$1`, `$2`) to prevent SQL injection
+
+### React Component Structure
+```jsx
+// Imports (grouped: React, external libs, internal, styles)
+import React from 'react';
+import { motion } from 'framer-motion';
+import { PixelButton } from '../shared/PixelButton';
+
+// Component
+export function ComponentName({ prop1, prop2 }) {
+  // Hooks at top
+  const [state, setState] = useState();
+  
+  // Handlers
+  const handleClick = () => { ... };
+  
+  // Render
+  return (
+    <div className="bg-surface p-4">
+      {/* JSX */}
+    </div>
+  );
+}
+```
 
 ---
 
@@ -356,7 +426,7 @@ FRONTEND_URL=http://localhost:3000
 curl http://localhost:5000/api/health
 
 # Database test
-curl http://localhost:5000/api/db/test
+curl http://localhost:5000/api/health/db
 
 # Root API
 curl http://localhost:5000/api
@@ -373,6 +443,8 @@ curl http://localhost:5000/api
 5. **SQL Injection**: Prevented via parameterized queries
 6. **Input Validation**: Express-validator on all inputs
 7. **File Uploads**: Limited file types and sizes for documents
+8. **Rate Limiting**: General and user-specific rate limits applied
+9. **XSS Protection**: Headers configured in Vercel deployment
 
 ---
 
@@ -412,6 +484,29 @@ Located in `backend/services/kimiService.js`:
 
 ---
 
+## Deployment
+
+### Supported Platforms
+
+| Platform | Service | Config File |
+|----------|---------|-------------|
+| Vercel | Frontend | `vercel.json` |
+| Railway | Full stack | `railway.json` |
+| Render | Backend | `render.yaml` |
+| Fly.io | Backend | `Dockerfile` + `fly.toml` |
+| Supabase | Database | - |
+
+### Deployment Checklist
+- [ ] Database migrations applied
+- [ ] Environment variables configured
+- [ ] Health check endpoint responding
+- [ ] CORS origins updated for production
+- [ ] Frontend API URL pointing to production backend
+
+See `DEPLOYMENT.md` for detailed deployment instructions.
+
+---
+
 ## Common Development Tasks
 
 ### Adding a New API Endpoint
@@ -440,7 +535,8 @@ Located in `backend/services/kimiService.js`:
 ### Database Connection Issues
 - Check `DATABASE_URL` format in `.env`
 - Verify SSL settings for Supabase (`rejectUnauthorized: false`)
-- Test connection: `curl http://localhost:5000/api/db/test`
+- Test connection: `curl http://localhost:5000/api/health`
+- Check pool metrics: `curl http://localhost:5000/api/health/db`
 
 ### AI API Errors
 - Verify `KIMI_API_KEY` is set in `.env`
@@ -451,6 +547,36 @@ Located in `backend/services/kimiService.js`:
 - Clear `node_modules` and reinstall: `rm -rf node_modules && npm install`
 - Check Node.js version (requires 18+)
 - Verify `REACT_APP_API_URL` environment variable if using custom backend URL
+
+### CORS Errors
+- Ensure `FRONTEND_URL` env var matches actual frontend origin
+- Check that deployed domain matches CORS patterns in `server.js`
+- Redeploy backend after changing CORS settings
+
+---
+
+## Useful Commands Reference
+
+```bash
+# Backend development
+cd backend && npm run dev
+
+# Frontend development
+cd frontend && npm start
+
+# Database connection test
+curl http://localhost:5000/api/health
+
+# View logs (Railway)
+railway logs -f
+
+# Deploy to Railway
+cd backend && railway up
+cd frontend && railway up
+
+# Run migrations
+psql $DATABASE_URL -f backend/migrations/001_initial_schema.sql
+```
 
 ---
 
