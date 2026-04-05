@@ -5,7 +5,7 @@
 
 const express = require('express');
 const router = express.Router();
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const db = require('../db/connection');
 
 // Get all artifacts for user
