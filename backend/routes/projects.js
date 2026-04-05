@@ -10,7 +10,7 @@ const db = require('../db/connection');
 const kimiService = require('../services/kimiService');
 
 // Create new project with AI-generated scope
-router.post('/', auth, async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   const { topic, goal, subject } = req.body;
   const userId = req.user.studentId;
 
@@ -86,7 +86,7 @@ router.post('/', auth, async (req, res) => {
 });
 
 // Get all projects for user
-router.get('/', auth, async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.studentId;
     const { status } = req.query;
@@ -120,7 +120,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // Get single project with chapters
-router.get('/:id', auth, async (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.studentId;
@@ -186,7 +186,7 @@ router.get('/:id', auth, async (req, res) => {
 });
 
 // AI suggest next chapter or boss battle
-router.post('/:id/suggest-next', auth, async (req, res) => {
+router.post('/:id/suggest-next', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.studentId;
@@ -245,7 +245,7 @@ router.post('/:id/suggest-next', auth, async (req, res) => {
 });
 
 // Update project
-router.patch('/:id', auth, async (req, res) => {
+router.patch('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.studentId;
@@ -294,7 +294,7 @@ router.patch('/:id', auth, async (req, res) => {
 });
 
 // Delete project
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.studentId;

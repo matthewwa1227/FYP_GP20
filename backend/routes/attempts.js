@@ -10,7 +10,7 @@ const db = require('../db/connection');
 const kimiService = require('../services/kimiService');
 
 // Submit an attempt
-router.post('/', auth, async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   const { chapterId, questionType, userAnswer, questionIndex } = req.body;
   const userId = req.user.studentId;
 
@@ -118,7 +118,7 @@ router.post('/', auth, async (req, res) => {
 });
 
 // Get attempt details with diagnosis
-router.get('/:id', auth, async (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.studentId;
@@ -144,7 +144,7 @@ router.get('/:id', auth, async (req, res) => {
 });
 
 // Retry an attempt (get mini-lesson)
-router.post('/:id/retry', auth, async (req, res) => {
+router.post('/:id/retry', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const userId = req.user.studentId;
 

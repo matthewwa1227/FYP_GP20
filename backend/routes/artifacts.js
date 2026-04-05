@@ -9,7 +9,7 @@ const { authenticateToken } = require('../middleware/auth');
 const db = require('../db/connection');
 
 // Get all artifacts for user
-router.get('/', auth, async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.studentId;
     const { search, tag } = req.query;
@@ -45,7 +45,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // Get single artifact
-router.get('/:id', auth, async (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.studentId;
@@ -71,7 +71,7 @@ router.get('/:id', auth, async (req, res) => {
 });
 
 // Get artifacts for project sidebar (used during chapters)
-router.get('/project/:projectId', auth, async (req, res) => {
+router.get('/project/:projectId', authenticateToken, async (req, res) => {
   try {
     const { projectId } = req.params;
     const userId = req.user.studentId;
@@ -111,7 +111,7 @@ router.get('/project/:projectId', auth, async (req, res) => {
 });
 
 // Search artifacts
-router.get('/search/all', auth, async (req, res) => {
+router.get('/search/all', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.studentId;
     const { q } = req.query;

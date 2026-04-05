@@ -10,7 +10,7 @@ const db = require('../db/connection');
 const kimiService = require('../services/kimiService');
 
 // Generate a single chapter (on-demand)
-router.post('/generate', auth, async (req, res) => {
+router.post('/generate', authenticateToken, async (req, res) => {
   const { projectId, userRequest, context } = req.body;
   const userId = req.user.studentId;
 
@@ -108,7 +108,7 @@ router.post('/generate', auth, async (req, res) => {
 });
 
 // Get chapter details
-router.get('/:id', auth, async (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.studentId;
@@ -152,7 +152,7 @@ router.get('/:id', auth, async (req, res) => {
 });
 
 // Complete chapter and generate artifact
-router.post('/:id/complete', auth, async (req, res) => {
+router.post('/:id/complete', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const userId = req.user.studentId;
 

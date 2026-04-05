@@ -10,7 +10,7 @@ const db = require('../db/connection');
 const kimiService = require('../services/kimiService');
 
 // Initialize a boss battle
-router.post('/start', auth, async (req, res) => {
+router.post('/start', authenticateToken, async (req, res) => {
   const { projectId } = req.body;
   const userId = req.user.studentId;
 
@@ -84,7 +84,7 @@ router.post('/start', auth, async (req, res) => {
 });
 
 // Get boss battle state
-router.get('/:id', auth, async (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.studentId;
@@ -133,7 +133,7 @@ router.get('/:id', auth, async (req, res) => {
 });
 
 // Submit stage solution
-router.post('/:id/stage', auth, async (req, res) => {
+router.post('/:id/stage', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const { solution } = req.body;
   const userId = req.user.studentId;
@@ -245,7 +245,7 @@ router.post('/:id/stage', auth, async (req, res) => {
 });
 
 // Retry failed stage
-router.post('/:id/retry', auth, async (req, res) => {
+router.post('/:id/retry', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.studentId;
