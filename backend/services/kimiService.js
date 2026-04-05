@@ -1637,6 +1637,381 @@ Important:
 }
 
 // ============================================
+// STUDYQUEST REBUILD - NEW AI FUNCTIONS
+// Phase 4: AI Integration
+// ============================================
+
+/**
+ * Generate project scope for StudyQuest Rebuild
+ * Creates a project-based learning scope with skill tree
+ */
+async function generateProjectScope(topic, goal) {
+  const prompt = `You are a learning path designer for project-based education.
+
+INPUT:
+- Topic: ${topic}
+- Goal: ${goal || `Build a real project using ${topic}`}
+
+OUTPUT FORMAT (JSON):
+{
+  "title": "Specific project title (e.g., 'Fitness Data Dashboard')",
+  "description": "What the student will build (2-3 sentences)",
+  "deliverable": "Concrete end product (e.g., 'Working Python script that analyzes fitness data')",
+  "skillTree": [
+    {"id": "1", "name": "First skill", "prerequisites": [], "unlocks": ["2"], "estimatedMinutes": 20},
+    {"id": "2", "name": "Second skill", "prerequisites": ["1"], "unlocks": ["3"], "estimatedMinutes": 25},
+    {"id": "3", "name": "Third skill", "prerequisites": ["2"], "unlocks": [], "estimatedMinutes": 30}
+  ]
+}
+
+RULES:
+- 3-5 skills in the tree
+- Each skill is a concrete, learnable concept
+- Prerequisites must be completed before unlocking
+- Last skill should be the "boss battle" synthesis
+- Use realistic time estimates (15-30 min per skill)
+- Focus on building something REAL, not abstract theory`;
+
+  try {
+    const response = await kimi.chat.completions.create({
+      model: 'kimi-k2.5',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      response_format: { type: 'json_object' }
+    });
+
+    const result = JSON.parse(response.choices[0].message.content);
+    logger.info('✅ Project scope generated:', result.title);
+    return result;
+  } catch (error) {
+    logger.error('❌ Project scope generation error:', error);
+    // Fallback
+    return {
+      title: `${topic} Project`,
+      description: `Learn ${topic} by building a practical project`,
+      deliverable: `Working ${topic} solution`,
+      skillTree: [
+        { id: '1', name: 'Basics', prerequisites: [], unlocks: ['2'], estimatedMinutes: 20 },
+        { id: '2', name: 'Core Concepts', prerequisites: ['1'], unlocks: ['3'], estimatedMinutes: 25 },
+        { id: '3', name: 'Advanced Application', prerequisites: ['2'], unlocks: [], estimatedMinutes: 30 }
+      ]
+    };
+  }
+}
+
+/**
+ * Generate a single chapter with structured content
+ */
+async function generateChapter({ topic, chapterNumber, skillName, projectContext, deliverable, previousContext }) {
+  const previousInfo = previousContext 
+    ? `\nPrevious chapter: "${previousContext.title}" covering: ${previousContext.keyPoints.join(', ')}` 
+    : '';
+
+  const prompt = `You are an expert educator creating a project-based learning chapter.
+
+TOPIC: ${topic}
+CHAPTER ${chapterNumber}: ${skillName}
+PROJECT CONTEXT: ${projectContext}
+FINAL DELIVERABLE: ${deliverable}${previousInfo}
+
+OUTPUT FORMAT (JSON):
+{
+  "context": "Real-world scenario opening (1-2 sentences, e.g., 'You need to load Apple Health data for analysis')",
+  "focus": "What specific skill this chapter teaches",
+  "keyPoints": ["3-5 bullet points of key concepts"],
+  "fullLesson": "Detailed explanation (300-500 words). Include code examples if technical. Connect to project.",
+  "whyItMatters": "How this connects to the final deliverable (2-3 sentences)"
+}
+
+RULES:
+- Context must be practical and concrete
+- Full lesson should be hands-on, not theoretical
+- Include working code examples
+- Connect everything back to the project goal
+- Progressive complexity (Chapter ${chapterNumber} should build on previous)`;
+
+  try {
+    const response = await kimi.chat.completions.create({
+      model: 'kimi-k2.5',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      response_format: { type: 'json_object' }
+    });
+
+    return JSON.parse(response.choices[0].message.content);
+  } catch (error) {
+    logger.error('❌ Chapter generation error:', error);
+    return {
+      context: `You need to learn ${skillName} for your project.`,
+      focus: skillName,
+      keyPoints: ['Key concept 1', 'Key concept 2', 'Key concept 3'],
+      fullLesson: `This chapter covers ${skillName}. Here's how it works...`,
+      whyItMatters: `This skill is essential for completing your project.`
+    };
+  }
+}
+
+/**
+ * Generate questions for a chapter
+ */
+async function generateQuestions({ topic, chapterTitle, lessonContent, count = 3 }) {
+  const prompt = `Create ${count} practice questions for this lesson.
+
+TOPIC: ${topic}
+CHAPTER: ${chapterTitle}
+LESSON CONTENT: ${lessonContent.substring(0, 1000)}
+
+OUTPUT FORMAT (JSON):
+{
+  "questions": [
+    {
+      "type": "fill_blank|code_execution|error_analysis|concept_synthesis",
+      "data": { "question": "...", "starterCode": "...", "blanks": [...] },
+      "correctAnswer": "...",
+      "explanation": "Detailed explanation of why this is correct",
+      "hint": "Subtle hint without giving away answer"
+    }
+  ]
+}
+
+QUESTION TYPE GUIDELINES:
+1. fill_blank: Missing code/words to complete a working solution
+2. code_execution: Write code that passes specific test cases
+3. error_analysis: Given broken code, identify and fix the error
+4. concept_synthesis: Combine multiple concepts from the lesson
+
+RULES:
+- Questions must be answerable using ONLY the lesson content
+- Include actual working code in code_execution type
+- Provide 4 options for error_analysis and concept_synthesis
+- Make questions practical, not theoretical`;
+
+  try {
+    const response = await kimi.chat.completions.create({
+      model: 'kimi-k2.5',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      response_format: { type: 'json_object' }
+    });
+
+    const result = JSON.parse(response.choices[0].message.content);
+    return result.questions || [];
+  } catch (error) {
+    logger.error('❌ Question generation error:', error);
+    // Fallback questions
+    return [
+      {
+        type: 'fill_blank',
+        data: { question: `Complete the code: ____ is used for ${topic}.`, blanks: [{ correctAnswer: 'the main concept' }] },
+        correctAnswer: 'the main concept',
+        explanation: 'The main concept from the lesson is the correct answer.',
+        hint: 'Review the key points in the lesson.'
+      }
+    ];
+  }
+}
+
+/**
+ * Generate AI diagnosis for wrong answer
+ */
+async function generateDiagnosis({ question, userAnswer, correctAnswer, previousAttempts }) {
+  const prompt = `You are a diagnostic tutor. Analyze why the student got this wrong.
+
+QUESTION: ${JSON.stringify(question)}
+USER ANSWER: ${JSON.stringify(userAnswer)}
+CORRECT ANSWER: ${JSON.stringify(correctAnswer)}
+ATTEMPT NUMBER: ${previousAttempts + 1}
+
+OUTPUT FORMAT (JSON):
+{
+  "diagnosis": "2-3 sentence explanation of what went wrong and why. Be specific but encouraging.",
+  "misconception": "Short label for this error type (e.g., 'syntax_error', 'concept_confusion', 'null_handling')",
+  "miniLesson": "1 paragraph targeted explanation to fix the specific gap",
+  "hint": "Subtle hint for retry (don't give away answer)"
+}
+
+TONE:
+- Encouraging, not discouraging
+- Focus on the learning opportunity
+- Be specific about what to review
+- Avoid making the student feel stupid`;
+
+  try {
+    const response = await kimi.chat.completions.create({
+      model: 'kimi-k2.5',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      response_format: { type: 'json_object' }
+    });
+
+    return JSON.parse(response.choices[0].message.content);
+  } catch (error) {
+    logger.error('❌ Diagnosis generation error:', error);
+    return {
+      diagnosis: 'That was not quite right. Let\'s review the concept together.',
+      misconception: 'general_error',
+      miniLesson: 'Review the lesson content and try again.',
+      hint: 'Look at the key points in the lesson.'
+    };
+  }
+}
+
+/**
+ * Generate knowledge artifact (cheat sheet) after chapter completion
+ */
+async function generateKnowledgeArtifact({ topic, chapterTitle, focusArea, keyPoints, fullLesson }) {
+  const prompt = `Create a knowledge artifact (cheat sheet) for this completed chapter.
+
+TOPIC: ${topic}
+CHAPTER: ${chapterTitle}
+FOCUS: ${focusArea}
+KEY POINTS: ${keyPoints.join(', ')}
+
+OUTPUT FORMAT (JSON):
+{
+  "title": "Short, memorable title (e.g., 'Pandas CSV Loading Cheat Sheet')",
+  "summary": "One-sentence summary of what this artifact covers",
+  "content": "Markdown-formatted reference guide. Include:\n- Quick reference table\n- Common code patterns\n- Gotchas and warnings\n- Links to related concepts",
+  "tags": ["tag1", "tag2", "tag3"]
+}
+
+STYLE:
+- Scannable format (tables, bullet points)
+- Copy-paste ready code examples
+- Practical, not theoretical
+- Easy to reference during practice`;
+
+  try {
+    const response = await kimi.chat.completions.create({
+      model: 'kimi-k2.5',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      response_format: { type: 'json_object' }
+    });
+
+    return JSON.parse(response.choices[0].message.content);
+  } catch (error) {
+    logger.error('❌ Artifact generation error:', error);
+    return {
+      title: `${chapterTitle} Reference`,
+      summary: `Quick reference for ${focusArea}`,
+      content: keyPoints.map(kp => `- ${kp}`).join('\n'),
+      tags: [topic.toLowerCase(), 'reference']
+    };
+  }
+}
+
+/**
+ * Generate boss battle (multi-stage synthesis challenge)
+ */
+async function generateBossBattle({ topic, deliverable, artifacts, skillTree }) {
+  const artifactSummaries = artifacts.map(a => `- ${a.title}: ${a.summary || 'Reference guide'}`).join('\n');
+  
+  const prompt = `Create a boss battle - a multi-stage synthesis challenge.
+
+TOPIC: ${topic}
+FINAL DELIVERABLE: ${deliverable}
+
+STUDENT'S KNOWLEDGE ARTIFACTS (completed chapters):
+${artifactSummaries}
+
+OUTPUT FORMAT (JSON):
+{
+  "title": "Epic battle name (e.g., 'The Dashboard Challenge')",
+  "description": "What the student must accomplish",
+  "scenario": "Real-world context for the challenge",
+  "deliverable": "Specific output required",
+  "stages": [
+    {
+      "number": 1,
+      "title": "Stage name",
+      "task": "What to do in this stage",
+      "relevantArtifacts": ["artifact titles that help here"],
+      "validationCriteria": ["How to check if passed"]
+    }
+  ]
+}
+
+STAGE STRUCTURE:
+- 3 stages that build on each other
+- Each stage requires using knowledge from previous chapters
+- Stage 1: Basic application
+- Stage 2: Intermediate synthesis
+- Stage 3: Complete solution
+- Must reference specific artifacts for help
+
+MAKE IT FEEL EPIC but ACHIEVABLE!`;
+
+  try {
+    const response = await kimi.chat.completions.create({
+      model: 'kimi-k2.5',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.8,
+      response_format: { type: 'json_object' }
+    });
+
+    return JSON.parse(response.choices[0].message.content);
+  } catch (error) {
+    logger.error('❌ Boss battle generation error:', error);
+    return {
+      title: `${topic} Final Challenge`,
+      description: `Apply everything you learned to complete the ${deliverable}`,
+      scenario: 'You need to complete the final project.',
+      deliverable,
+      stages: [
+        { number: 1, title: 'Stage 1', task: 'Apply basic concepts', relevantArtifacts: [], validationCriteria: [] },
+        { number: 2, title: 'Stage 2', task: 'Add complexity', relevantArtifacts: [], validationCriteria: [] },
+        { number: 3, title: 'Stage 3', task: 'Complete the solution', relevantArtifacts: [], validationCriteria: [] }
+      ]
+    };
+  }
+}
+
+/**
+ * Validate boss battle stage solution
+ */
+async function validateBossStage({ stage, userSolution, artifacts }) {
+  const prompt = `Validate this boss battle stage solution.
+
+STAGE: ${JSON.stringify(stage)}
+USER SOLUTION: ${JSON.stringify(userSolution)}
+RELEVANT ARTIFACTS: ${artifacts.map(a => a.title).join(', ')}
+
+OUTPUT FORMAT (JSON):
+{
+  "passed": true|false,
+  "diagnosis": "If failed, specific explanation of what's wrong",
+  "highlightedArtifacts": ["Which artifact sections to highlight"],
+  "hint": "Hint for retry without giving answer",
+  "details": { "specific": "validation details" }
+}
+
+BE STRICT but FAIR:
+- Must actually work/solve the problem
+- Common mistakes should fail
+- Provide specific, actionable feedback`;
+
+  try {
+    const response = await kimi.chat.completions.create({
+      model: 'kimi-k2.5',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.5,
+      response_format: { type: 'json_object' }
+    });
+
+    return JSON.parse(response.choices[0].message.content);
+  } catch (error) {
+    logger.error('❌ Stage validation error:', error);
+    return {
+      passed: false,
+      diagnosis: 'Unable to validate. Please try again.',
+      highlightedArtifacts: [],
+      hint: 'Review the stage requirements carefully.'
+    };
+  }
+}
+
+// ============================================
 // EXPORTS
 // ============================================
 module.exports = {
@@ -1644,7 +2019,7 @@ module.exports = {
   chatWithStudyBuddySocratic,
   sendMessageToKimi,
   generateExercises,
-  generateReadingPassage,  // MISSION 55: Reading comprehension
+  generateReadingPassage,
   analyzeDocumentImage,
   generateStoryIntro,
   generateStoryScene,
@@ -1655,5 +2030,13 @@ module.exports = {
   generateStudyJourney,
   getNarrativeMessage,
   getNarrativeContext: () => NARRATIVE_CONTEXT,
-  TIER_PROMPT_CONFIG
+  TIER_PROMPT_CONFIG,
+  // StudyQuest Rebuild exports
+  generateProjectScope,
+  generateChapter,
+  generateQuestions,
+  generateDiagnosis,
+  generateKnowledgeArtifact,
+  generateBossBattle,
+  validateBossStage
 };

@@ -199,6 +199,16 @@ app.use('/api/teacher', require('./routes/teacher'));
 app.use('/api/social', require('./routes/social'));
 app.use('/api/schedule-optimizer', require('./routes/scheduleOptimizer'));
 app.use('/api/exercises', require('./routes/exercises'));
+app.use('/api/study', require('./routes/studyquest-rebuild')); // StudyQuest Rebuild Routes (legacy)
+
+// ============================================
+// STUDYQUEST REBUILD - Phase 1: Data Layer
+// ============================================
+app.use('/api/projects', require('./routes/projects'));
+app.use('/api/chapters', require('./routes/chapters'));
+app.use('/api/attempts', require('./routes/attempts'));
+app.use('/api/boss-battles', require('./routes/bossBattles'));
+app.use('/api/artifacts', require('./routes/artifacts'));
 
 // ============================================
 // ROOT API ENDPOINT
