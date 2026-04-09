@@ -83,6 +83,11 @@ FYP_GP20/
 │   │   ├── dashboard.js        # Dashboard analytics
 │   │   ├── revision.js         # Document-based learning
 │   │   ├── exercises.js        # Printable worksheet generator
+│   │   ├── projects.js         # StudyQuest Rebuild - Projects
+│   │   ├── chapters.js         # StudyQuest Rebuild - Chapters
+│   │   ├── attempts.js         # StudyQuest Rebuild - Quiz attempts
+│   │   ├── bossBattles.js      # StudyQuest Rebuild - Boss battles
+│   │   ├── artifacts.js        # StudyQuest Rebuild - Artifacts
 │   │   └── student.js          # Student profile
 │   │
 │   ├── controllers/            # Business logic
@@ -104,7 +109,7 @@ FYP_GP20/
 │   ├── db/                     # Database
 │   │   └── connection.js       # PostgreSQL connection pool with retries
 │   │
-│   ├── migrations/             # SQL schema migrations
+│   ├── migrations/             # SQL schema migrations (001-016)
 │   │   ├── 001_initial_schema.sql
 │   │   ├── 002_add_parents.sql
 │   │   ├── 003_ai.sql
@@ -115,7 +120,9 @@ FYP_GP20/
 │   │   ├── 011_comprehensive_features.sql
 │   │   ├── 012_fix_role_constraint.sql
 │   │   ├── 013_ai_media.sql
-│   │   └── 014_concurrent_access_fix.sql
+│   │   ├── 014_concurrent_access_fix.sql
+│   │   ├── 015_studyquest_rebuild.sql
+│   │   └── 016_studyquest_seed_data.sql
 │   │
 │   ├── scripts/                # Utility scripts
 │   │   └── migrate.js          # Database migration runner
@@ -137,7 +144,7 @@ FYP_GP20/
 │       ├── setupTests.js       # Test configuration
 │       │
 │       ├── components/
-│       │   ├── auth/           # Login.jsx, Register.jsx
+│       │   ├── auth/           # Login.jsx, Register.jsx, ProtectedRoute.jsx
 │       │   ├── dashboard/      # Dashboard.jsx, CourseCard.jsx
 │       │   ├── StudyTimer/     # StudyTimer.jsx (Pomodoro timer)
 │       │   ├── Achievements/   # Achievements.jsx, AchievementCard.jsx
@@ -156,7 +163,11 @@ FYP_GP20/
 │       │   ├── portal/         # ParentPortal.jsx, ConnectParent.jsx
 │       │   ├── layout/         # SideNavBar.jsx, TopAppBar.jsx
 │       │   ├── questlog/       # QuestCard.jsx, HeroStatusSidebar.jsx
+│       │   ├── settings/       # Settings.jsx
 │       │   ├── ui/             # Reusable UI components
+│       │   ├── Challenges/
+│       │   ├── FamilyConnectionManager.jsx
+│       │   ├── GuardianManagement.jsx
 │       │   └── shared/         # Navbar.jsx, PixelButton.jsx, PixelCard.jsx
 │       │
 │       ├── context/
@@ -182,6 +193,10 @@ FYP_GP20/
 ├── Diagram/                    # Architecture diagrams
 ├── Diagram2/                   # Additional diagrams
 ├── PROJECT_OVERVIEW.md         # Technical project overview
+├── DEPLOYMENT.md               # Railway deployment guide
+├── DEPLOYMENT_FREE.md          # Free tier deployment options
+├── DEPLOYMENT_QUICKSTART.md    # Quick deployment guide
+├── SUPABASE_SETUP.md           # Supabase database setup
 └── UI_AND_PIXEL_ART_GUIDE.md   # Design system and styling guide
 ```
 
@@ -291,6 +306,11 @@ REACT_APP_API_URL=http://localhost:5000/api
 | family_links | Parent-child relationship links |
 | ai_conversations | Chat history with Study Buddy |
 | revision_documents | Uploaded documents for revision mode |
+| projects | StudyQuest Rebuild - Learning projects |
+| chapters | StudyQuest Rebuild - Project chapters |
+| quiz_attempts | StudyQuest Rebuild - Quiz attempts |
+| boss_battles | StudyQuest Rebuild - Boss battle records |
+| artifacts | StudyQuest Rebuild - Student artifacts |
 
 ### Key Database Features
 - **UUID Primary Keys**: All main entities use UUIDs
@@ -443,7 +463,7 @@ curl http://localhost:5000/api
 5. **SQL Injection**: Prevented via parameterized queries
 6. **Input Validation**: Express-validator on all inputs
 7. **File Uploads**: Limited file types and sizes for documents
-8. **Rate Limiting**: General and user-specific rate limits applied
+8. **Rate Limiting**: General and user-specific rate limits applied (see `middleware/concurrencyGuard.js`)
 9. **XSS Protection**: Headers configured in Vercel deployment
 
 ---
@@ -580,4 +600,4 @@ psql $DATABASE_URL -f backend/migrations/001_initial_schema.sql
 
 ---
 
-*Last updated: March 2026*
+*Last updated: April 2026*
