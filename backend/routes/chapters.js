@@ -20,7 +20,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
 
     // Get project and previous chapters for context
     const projectResult = await client.query(
-      'SELECT * FROM user_projects WHERE id = $1 AND user_id = $2',
+      'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
       [projectId, userId]
     );
 
@@ -33,7 +33,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
 
     // Get previous chapter titles for context
     const prevChapters = await client.query(
-      `SELECT title, key_points FROM project_chapters 
+      `SELECT title, key_points FROM chapters 
        WHERE project_id = $1 AND status = 'completed'
        ORDER BY chapter_number`,
       [projectId]
@@ -67,7 +67,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
 
     // Insert chapter
     const chapterResult = await client.query(
-      `INSERT INTO project_chapters (
+      `INSERT INTO chapters (
         project_id, user_id, chapter_number, title, 
         context, key_points, full_lesson, why_it_matters,
         questions, status, created_at
@@ -87,7 +87,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
 
     // Update project's current chapter
     await client.query(
-      'UPDATE user_projects SET current_chapter_id = $1 WHERE id = $2',
+      'UPDATE projects SET current_chapter_id = $1 WHERE id = $2',
       [chapterResult.rows[0].id, projectId]
     );
 
@@ -107,6 +107,40 @@ router.post('/generate', authenticateToken, async (req, res) => {
   }
 });
 
+// List chapters for a project
+router.get('/', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.studentId;
+    const { projectId } = req.query;
+
+    let query = `
+      SELECT c.*, p.title as project_title 
+      FROM chapters c
+      JOIN projects p ON c.project_id = p.id
+      WHERE c.user_id = $1
+    `;
+    const params = [userId];
+
+    if (projectId) {
+      query += ` AND c.project_id = $2`;
+      params.push(projectId);
+    }
+
+    query += ` ORDER BY c.chapter_number`;
+
+    const result = await db.query(query, params);
+
+    res.json({
+      success: true,
+      chapters: result.rows
+    });
+
+  } catch (error) {
+    console.error('Error fetching chapters:', error);
+    res.status(500).json({ error: 'Failed to fetch chapters' });
+  }
+});
+
 // Get chapter details
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
@@ -114,10 +148,10 @@ router.get('/:id', authenticateToken, async (req, res) => {
     const userId = req.user.studentId;
 
     const result = await db.query(
-      `SELECT pc.*, p.title as project_title, p.deliverable 
-       FROM project_chapters pc
-       JOIN user_projects p ON pc.project_id = p.id
-       WHERE pc.id = $1 AND pc.user_id = $2`,
+      `SELECT c.*, p.title as project_title, p.deliverable 
+       FROM chapters c
+       JOIN projects p ON c.project_id = p.id
+       WHERE c.id = $1 AND c.user_id = $2`,
       [id, userId]
     );
 
@@ -162,7 +196,7 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
 
     // Get chapter
     const chapterResult = await client.query(
-      'SELECT * FROM project_chapters WHERE id = $1 AND user_id = $2',
+      'SELECT * FROM chapters WHERE id = $1 AND user_id = $2',
       [id, userId]
     );
 
@@ -175,7 +209,7 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
 
     // Mark chapter as completed
     await client.query(
-      `UPDATE project_chapters 
+      `UPDATE chapters 
        SET status = 'completed', completed_at = NOW() 
        WHERE id = $1`,
       [id]

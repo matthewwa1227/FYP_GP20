@@ -20,7 +20,7 @@ router.post('/', authenticateToken, async (req, res) => {
 
     // Get chapter with questions
     const chapterResult = await client.query(
-      'SELECT * FROM project_chapters WHERE id = $1 AND user_id = $2',
+      'SELECT * FROM chapters WHERE id = $1 AND user_id = $2',
       [chapterId, userId]
     );
 
@@ -124,9 +124,9 @@ router.get('/:id', authenticateToken, async (req, res) => {
     const userId = req.user.studentId;
 
     const result = await db.query(
-      `SELECT ca.*, pc.title as chapter_title, pc.project_id 
+      `SELECT ca.*, c.title as chapter_title, c.project_id 
        FROM chapter_attempts ca
-       JOIN project_chapters pc ON ca.chapter_id = pc.id
+       JOIN chapters c ON ca.chapter_id = c.id
        WHERE ca.id = $1 AND ca.user_id = $2`,
       [id, userId]
     );

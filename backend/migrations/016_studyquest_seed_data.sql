@@ -338,7 +338,7 @@ INSERT INTO skill_tree_templates (topic, category, skill_tree, estimated_hours, 
     {"id": "boss", "name": "Complete Analysis Project", "prerequisites": ["6"], "unlocks": [], "estimatedMinutes": 45, "isBoss": true}
 ]'::jsonb,
 180,
-'[]'
+ARRAY[]::TEXT[]
 ),
 
 ('python-fitness-dashboard', 'data-science',
@@ -351,7 +351,7 @@ INSERT INTO skill_tree_templates (topic, category, skill_tree, estimated_hours, 
     {"id": "boss", "name": "Build Fitness Dashboard", "prerequisites": ["5"], "unlocks": [], "estimatedMinutes": 40, "isBoss": true}
 ]'::jsonb,
 150,
-'[]'
+ARRAY[]::TEXT[]
 ),
 
 ('sql-data-analysis', 'data-science',
@@ -364,7 +364,7 @@ INSERT INTO skill_tree_templates (topic, category, skill_tree, estimated_hours, 
     {"id": "boss", "name": "Complex Analysis Query", "prerequisites": ["5"], "unlocks": [], "estimatedMinutes": 35, "isBoss": true}
 ]'::jsonb,
 150,
-'[]'
+ARRAY[]::TEXT[]
 );
 
 -- ============================================
@@ -428,7 +428,7 @@ df.fillna(method=''ffill'')
 - Use `inplace=True` or reassign: `df = df.dropna()`
 - Chain operations: `df.dropna().fillna(0)`
 ',
- '["pandas", "python", "data-analysis"]',
+ ARRAY['pandas', 'python', 'data-analysis'],
  1
 ),
 
@@ -465,7 +465,7 @@ positive = list(filter(is_positive, numbers))
 square = lambda x: x ** 2
 ```
 ',
- '["python", "functions", "basics"]',
+ ARRAY['python', 'functions', 'basics'],
  2
 );
 

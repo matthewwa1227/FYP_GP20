@@ -27,9 +27,9 @@ router.post('/', authenticateToken, async (req, res) => {
 
     // Insert project
     const projectResult = await client.query(
-      `INSERT INTO user_projects (
+      `INSERT INTO projects (
         user_id, title, description, deliverable, 
-        subject, skill_tree, status, created_at
+        topic, skill_tree, status, created_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
       RETURNING *`,
       [
@@ -37,34 +37,13 @@ router.post('/', authenticateToken, async (req, res) => {
         scope.title,
         scope.description,
         scope.deliverable,
-        subject || 'General',
+        topic,
         JSON.stringify(scope.skillTree),
         'active'
       ]
     );
 
     const project = projectResult.rows[0];
-
-    // Create skill tree entries
-    if (scope.skillTree && scope.skillTree.length > 0) {
-      for (const skill of scope.skillTree) {
-        await client.query(
-          `INSERT INTO project_skill_tree (
-            project_id, user_id, skill_name, 
-            prerequisites, unlocks, is_unlocked, estimated_minutes
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [
-            project.id,
-            userId,
-            skill.name,
-            JSON.stringify(skill.prerequisites || []),
-            JSON.stringify(skill.unlocks || []),
-            skill.prerequisites?.length === 0, // Unlock if no prerequisites
-            skill.estimatedMinutes || 20
-          ]
-        );
-      }
-    }
 
     await client.query('COMMIT');
 
@@ -92,22 +71,22 @@ router.get('/', authenticateToken, async (req, res) => {
     const { status } = req.query;
 
     let query = `
-      SELECT up.*, 
-        (SELECT COUNT(*) FROM project_chapters 
-         WHERE project_id = up.id AND status = 'completed') as completed_chapters,
-        (SELECT COUNT(*) FROM project_chapters 
-         WHERE project_id = up.id) as total_chapters
-      FROM user_projects up
-      WHERE up.user_id = $1
+      SELECT p.*, 
+        (SELECT COUNT(*) FROM chapters 
+         WHERE project_id = p.id AND status = 'completed') as completed_chapters,
+        (SELECT COUNT(*) FROM chapters 
+         WHERE project_id = p.id) as total_chapters
+      FROM projects p
+      WHERE p.user_id = $1
     `;
     const params = [userId];
 
     if (status) {
-      query += ` AND up.status = $2`;
+      query += ` AND p.status = $2`;
       params.push(status);
     }
 
-    query += ` ORDER BY up.created_at DESC`;
+    query += ` ORDER BY p.created_at DESC`;
 
     const result = await db.query(query, params);
 
@@ -127,7 +106,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 
     // Get project
     const projectResult = await db.query(
-      'SELECT * FROM user_projects WHERE id = $1 AND user_id = $2',
+      'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
       [id, userId]
     );
 
@@ -141,7 +120,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
     const chaptersResult = await db.query(
       `SELECT id, chapter_number, title, context, status, 
               completed_at, created_at
-       FROM project_chapters 
+       FROM chapters 
        WHERE project_id = $1 
        ORDER BY chapter_number`,
       [id]
@@ -149,10 +128,8 @@ router.get('/:id', authenticateToken, async (req, res) => {
 
     // Get skill tree
     const skillTreeResult = await db.query(
-      `SELECT * FROM project_skill_tree 
-       WHERE project_id = $1 
-       ORDER BY id`,
-      [id]
+      `SELECT * FROM skill_tree_templates 
+       ORDER BY id`
     );
 
     // Get artifacts count
@@ -165,7 +142,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
     const bossResult = await db.query(
       `SELECT id, title, status, current_stage 
        FROM boss_battles 
-       WHERE project_id = $1 AND status = 'active'`,
+       WHERE project_id = $1 AND status = 'in_progress'`,
       [id]
     );
 
@@ -193,7 +170,7 @@ router.post('/:id/suggest-next', authenticateToken, async (req, res) => {
 
     // Get project with chapters
     const projectResult = await db.query(
-      'SELECT * FROM user_projects WHERE id = $1 AND user_id = $2',
+      'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
       [id, userId]
     );
 
@@ -205,7 +182,7 @@ router.post('/:id/suggest-next', authenticateToken, async (req, res) => {
 
     // Get completed chapters
     const chaptersResult = await db.query(
-      `SELECT title, status FROM project_chapters 
+      `SELECT title, status FROM chapters 
        WHERE project_id = $1 AND user_id = $2
        ORDER BY chapter_number`,
       [id, userId]
@@ -275,7 +252,7 @@ router.patch('/:id', authenticateToken, async (req, res) => {
     values.push(id, userId);
 
     const result = await db.query(
-      `UPDATE user_projects SET ${updates.join(', ')} 
+      `UPDATE projects SET ${updates.join(', ')} 
        WHERE id = $${paramCount++} AND user_id = $${paramCount}
        RETURNING *`,
       values
@@ -300,7 +277,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     const userId = req.user.studentId;
 
     const result = await db.query(
-      'DELETE FROM user_projects WHERE id = $1 AND user_id = $2 RETURNING id',
+      'DELETE FROM projects WHERE id = $1 AND user_id = $2 RETURNING id',
       [id, userId]
     );
 

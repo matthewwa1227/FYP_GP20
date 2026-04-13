@@ -1903,44 +1903,56 @@ STYLE:
 
 /**
  * Generate boss battle (multi-stage synthesis challenge)
+ * Full Newquest specification implementation
  */
-async function generateBossBattle({ topic, deliverable, artifacts, skillTree }) {
+async function generateBossBattle({ topic, deliverable, artifacts, chapters, skillTree }) {
   const artifactSummaries = artifacts.map(a => `- ${a.title}: ${a.summary || 'Reference guide'}`).join('\n');
+  const chapterSummaries = (chapters || []).map(c => `- ${c.title} (Chapter ${c.chapter_number})`).join('\n');
   
-  const prompt = `Create a boss battle - a multi-stage synthesis challenge.
+  const prompt = `You are designing a Newquest Boss Battle - a multi-stage synthesis challenge for project-based learning.
 
 TOPIC: ${topic}
 FINAL DELIVERABLE: ${deliverable}
 
-STUDENT'S KNOWLEDGE ARTIFACTS (completed chapters):
-${artifactSummaries}
+COMPLETED CHAPTERS:
+${chapterSummaries || '- No chapters completed yet'}
+
+STUDENT'S KNOWLEDGE ARTIFACTS:
+${artifactSummaries || '- No artifacts yet'}
 
 OUTPUT FORMAT (JSON):
 {
   "title": "Epic battle name (e.g., 'The Dashboard Challenge')",
-  "description": "What the student must accomplish",
-  "scenario": "Real-world context for the challenge",
+  "description": "What the student must accomplish (2 sentences)",
+  "scenario": "Real-world context for the challenge (e.g., 'Client needs cleaned data by Friday')",
   "deliverable": "Specific output required",
   "stages": [
     {
-      "number": 1,
+      "id": "uuid-string",
+      "stageNumber": 1,
       "title": "Stage name",
+      "scenario": "Real-world scenario for this stage",
+      "deliverable": "Specific output for this stage",
       "task": "What to do in this stage",
+      "requiredChapters": ["chapter-uuid-1", "chapter-uuid-2"],
       "relevantArtifacts": ["artifact titles that help here"],
       "validationCriteria": ["How to check if passed"]
     }
   ]
 }
 
-STAGE STRUCTURE:
-- 3 stages that build on each other
-- Each stage requires using knowledge from previous chapters
-- Stage 1: Basic application
-- Stage 2: Intermediate synthesis
-- Stage 3: Complete solution
-- Must reference specific artifacts for help
+STAGE STRUCTURE (exactly 3 stages):
+- Stage 1: Basic application using 2 chapter skills simultaneously (e.g., CSV Loading + Data Cleaning)
+- Stage 2: Intermediate synthesis requiring 3 skills (e.g., Cleaning + Transformation + Initial Visualization). Stage 2 must consume the actual output from Stage 1.
+- Stage 3: Complete solution integrating all skills. Stage 3 must consume the output from Stage 2.
 
-MAKE IT FEEL EPIC but ACHIEVABLE!`;
+CRITICAL RULES:
+1. Each stage MUST require 2-4 chapter skills simultaneously
+2. Stage N must explicitly build on Stage N-1 output
+3. Reference specific artifacts by their exact titles
+4. Make it feel epic but achievable
+5. Include realistic technical debt scenarios
+6. Validation criteria must be specific and testable`;
 
   try {
     const response = await kimi.chat.completions.create({
@@ -1950,18 +1962,66 @@ MAKE IT FEEL EPIC but ACHIEVABLE!`;
       response_format: { type: 'json_object' }
     });
 
-    return JSON.parse(response.choices[0].message.content);
+    const result = JSON.parse(response.choices[0].message.content);
+    
+    // Ensure each stage has required fields and UUIDs
+    if (result.stages && Array.isArray(result.stages)) {
+      result.stages = result.stages.map((stage, idx) => ({
+        id: stage.id || require('crypto').randomUUID(),
+        stageNumber: stage.stageNumber || idx + 1,
+        title: stage.title || `Stage ${idx + 1}`,
+        scenario: stage.scenario || stage.task,
+        deliverable: stage.deliverable || result.deliverable,
+        task: stage.task || stage.scenario,
+        requiredChapters: stage.requiredChapters || [],
+        relevantArtifacts: stage.relevantArtifacts || [],
+        validationCriteria: stage.validationCriteria || []
+      }));
+    }
+    
+    logger.info('✅ Boss battle generated:', result.title);
+    return result;
   } catch (error) {
     logger.error('❌ Boss battle generation error:', error);
     return {
       title: `${topic} Final Challenge`,
       description: `Apply everything you learned to complete the ${deliverable}`,
-      scenario: 'You need to complete the final project.',
+      scenario: 'You need to complete the final project under a deadline.',
       deliverable,
       stages: [
-        { number: 1, title: 'Stage 1', task: 'Apply basic concepts', relevantArtifacts: [], validationCriteria: [] },
-        { number: 2, title: 'Stage 2', task: 'Add complexity', relevantArtifacts: [], validationCriteria: [] },
-        { number: 3, title: 'Stage 3', task: 'Complete the solution', relevantArtifacts: [], validationCriteria: [] }
+        { 
+          id: require('crypto').randomUUID(),
+          stageNumber: 1, 
+          title: 'Foundation Build', 
+          scenario: 'Apply basic concepts from your first chapters.',
+          deliverable: 'Basic working component',
+          task: 'Apply basic concepts', 
+          requiredChapters: [],
+          relevantArtifacts: [], 
+          validationCriteria: ['Solution runs without errors'] 
+        },
+        { 
+          id: require('crypto').randomUUID(),
+          stageNumber: 2, 
+          title: 'Integration Test', 
+          scenario: 'Combine multiple skills into a cohesive solution.',
+          deliverable: 'Integrated partial solution',
+          task: 'Add complexity and connect stage 1 output', 
+          requiredChapters: [],
+          relevantArtifacts: [], 
+          validationCriteria: ['Stage 1 output is used correctly'] 
+        },
+        { 
+          id: require('crypto').randomUUID(),
+          stageNumber: 3, 
+          title: 'Final Synthesis', 
+          scenario: 'Deliver the complete project.',
+          deliverable,
+          task: 'Complete the solution', 
+          requiredChapters: [],
+          relevantArtifacts: [], 
+          validationCriteria: ['Complete deliverable matches requirements'] 
+        }
       ]
     };
   }
@@ -1969,44 +2029,79 @@ MAKE IT FEEL EPIC but ACHIEVABLE!`;
 
 /**
  * Validate boss battle stage solution
+ * Supports backward tracing and hotfix mode
  */
-async function validateBossStage({ stage, userSolution, artifacts }) {
-  const prompt = `Validate this boss battle stage solution.
+async function validateBossStage({ stage, userSolution, artifacts, previousSolution, mode = 'boss-battle' }) {
+  const prompt = `You are validating a Newquest Boss Battle stage solution with ${mode === 'boss-battle' ? 'backward tracing enabled' : 'standard validation'}.
 
 STAGE: ${JSON.stringify(stage)}
 USER SOLUTION: ${JSON.stringify(userSolution)}
-RELEVANT ARTIFACTS: ${artifacts.map(a => a.title).join(', ')}
+RELEVANT ARTIFACTS: ${artifacts.map(a => `${a.title}: ${a.summary || 'Reference'}`).join(', ')}
+${previousSolution ? `PREVIOUS STAGE SOLUTION (for propagation check): ${JSON.stringify(previousSolution)}` : ''}
 
 OUTPUT FORMAT (JSON):
 {
   "passed": true|false,
-  "diagnosis": "If failed, specific explanation of what's wrong",
-  "highlightedArtifacts": ["Which artifact sections to highlight"],
+  "functionalEquivalence": true|false,
+  "diagnosis": "If failed, specific explanation of what's wrong and why",
+  "errorTrace": [
+    {
+      "location": "where in the solution the error occurs",
+      "error": "description of the error",
+      "severity": "critical|warning"
+    }
+  ],
+  "upstreamDependency": null|number,
+  "highlightedArtifacts": ["Which artifact titles to highlight"],
   "hint": "Hint for retry without giving answer",
-  "details": { "specific": "validation details" }
+  "executionTrace": {
+    "steps": ["step-by-step trace of what the solution does"],
+    "output": "expected or actual output",
+    "issues": ["any issues found"]
+  }
 }
 
-BE STRICT but FAIR:
-- Must actually work/solve the problem
-- Common mistakes should fail
-- Provide specific, actionable feedback`;
+VALIDATION RULES:
+1. FUNCTIONAL EQUIVALENCE: Any solution producing correct output passes, regardless of approach
+2. BACKWARD TRACING: If this stage fails because of a bug in the previous stage solution, set upstreamDependency to the previous stage number (stageNumber - 1) and explain the root cause
+3. If userSolution doesn't use/consume previous stage output when required, that's an integration failure
+4. BE STRICT but FAIR: Must actually solve the stage deliverable
+5. Provide specific, actionable feedback referencing exact artifacts where helpful
+6. executionTrace should trace the data flow through the solution`;
 
   try {
     const response = await kimi.chat.completions.create({
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.5,
+      temperature: 0.4,
       response_format: { type: 'json_object' }
     });
 
-    return JSON.parse(response.choices[0].message.content);
+    const result = JSON.parse(response.choices[0].message.content);
+    
+    // Normalize upstreamDependency
+    if (result.upstreamDependency !== undefined && result.upstreamDependency !== null) {
+      // Ensure it's a number or null
+      const dep = parseInt(result.upstreamDependency);
+      result.upstreamDependency = isNaN(dep) ? null : dep;
+    }
+    
+    return result;
   } catch (error) {
     logger.error('❌ Stage validation error:', error);
     return {
       passed: false,
-      diagnosis: 'Unable to validate. Please try again.',
-      highlightedArtifacts: [],
-      hint: 'Review the stage requirements carefully.'
+      functionalEquivalence: false,
+      diagnosis: 'Unable to validate at this time. Please try submitting again.',
+      errorTrace: null,
+      upstreamDependency: null,
+      highlightedArtifacts: stage.relevantArtifacts || [],
+      hint: 'Review the stage requirements and your relevant knowledge artifacts carefully.',
+      executionTrace: {
+        steps: [],
+        output: null,
+        issues: ['Validation service temporarily unavailable']
+      }
     };
   }
 }

@@ -17,19 +17,28 @@ router.get('/', authenticateToken, async (req, res) => {
     let query = `
       SELECT ka.*, p.title as project_title 
       FROM knowledge_artifacts ka
-      JOIN user_projects p ON ka.project_id = p.id
+      JOIN projects p ON ka.project_id = p.id
       WHERE ka.user_id = $1
     `;
     const params = [userId];
+    let paramIndex = 2;
 
     if (search) {
-      query += ` AND (ka.title ILIKE $2 OR ka.content_markdown ILIKE $2 OR ka.summary ILIKE $2)`;
+      query += ` AND (ka.title ILIKE $${paramIndex} OR ka.content_markdown ILIKE $${paramIndex} OR ka.summary ILIKE $${paramIndex})`;
       params.push(`%${search}%`);
+      paramIndex++;
+    }
+
+    if (req.query.projectId) {
+      query += ` AND ka.project_id = $${paramIndex}`;
+      params.push(req.query.projectId);
+      paramIndex++;
     }
 
     if (tag) {
-      query += search ? ` AND $3 = ANY(ka.tags)` : ` AND $2 = ANY(ka.tags)`;
+      query += ` AND $${paramIndex} = ANY(ka.tags)`;
       params.push(tag);
+      paramIndex++;
     }
 
     query += ` ORDER BY ka.created_at DESC`;
@@ -53,7 +62,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
     const result = await db.query(
       `SELECT ka.*, p.title as project_title 
        FROM knowledge_artifacts ka
-       JOIN user_projects p ON ka.project_id = p.id
+       JOIN projects p ON ka.project_id = p.id
        WHERE ka.id = $1 AND ka.user_id = $2`,
       [id, userId]
     );
@@ -78,7 +87,7 @@ router.get('/project/:projectId', authenticateToken, async (req, res) => {
 
     // Verify user owns this project
     const projectCheck = await db.query(
-      'SELECT * FROM user_projects WHERE id = $1 AND user_id = $2',
+      'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
       [projectId, userId]
     );
 
@@ -86,13 +95,11 @@ router.get('/project/:projectId', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Get artifacts with optional references
+    // Get artifacts for this project
     const result = await db.query(
       `SELECT ka.id, ka.title, ka.content_markdown, ka.tags, 
-              ka.summary, ka.created_at,
-              ar.relevance_score, ar.highlighted_section
+              ka.summary, ka.created_at
        FROM knowledge_artifacts ka
-       LEFT JOIN artifact_references ar ON ka.id = ar.artifact_id
        WHERE ka.project_id = $1 AND ka.user_id = $2
        ORDER BY ka.created_at DESC`,
       [projectId, userId]
@@ -123,7 +130,7 @@ router.get('/search/all', authenticateToken, async (req, res) => {
     const result = await db.query(
       `SELECT ka.*, p.title as project_title 
        FROM knowledge_artifacts ka
-       JOIN user_projects p ON ka.project_id = p.id
+       JOIN projects p ON ka.project_id = p.id
        WHERE ka.user_id = $1 
        AND (ka.title ILIKE $2 
             OR ka.content_markdown ILIKE $2 
