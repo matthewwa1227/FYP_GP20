@@ -12,7 +12,7 @@ const kimiService = require('../services/kimiService');
 // Create new project with AI-generated scope
 router.post('/', authenticateToken, async (req, res) => {
   const { topic, goal, subject } = req.body;
-  const userId = req.user.studentId;
+  const userId = req.user.id;
 
   if (!topic) {
     return res.status(400).json({ error: 'Topic is required' });
@@ -67,7 +67,7 @@ router.post('/', authenticateToken, async (req, res) => {
 // Get all projects for user
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.studentId;
+    const userId = req.user.id;
     const { status } = req.query;
 
     let query = `
@@ -102,7 +102,7 @@ router.get('/', authenticateToken, async (req, res) => {
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.studentId;
+    const userId = req.user.id;
 
     // Get project
     const projectResult = await db.query(
@@ -166,7 +166,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 router.post('/:id/suggest-next', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.studentId;
+    const userId = req.user.id;
 
     // Get project with chapters
     const projectResult = await db.query(
@@ -225,7 +225,7 @@ router.post('/:id/suggest-next', authenticateToken, async (req, res) => {
 router.patch('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.studentId;
+    const userId = req.user.id;
     const { title, description, status } = req.body;
 
     const updates = [];
@@ -274,7 +274,7 @@ router.patch('/:id', authenticateToken, async (req, res) => {
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.studentId;
+    const userId = req.user.id;
 
     const result = await db.query(
       'DELETE FROM projects WHERE id = $1 AND user_id = $2 RETURNING id',

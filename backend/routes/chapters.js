@@ -12,7 +12,7 @@ const kimiService = require('../services/kimiService');
 // Generate a single chapter (on-demand)
 router.post('/generate', authenticateToken, async (req, res) => {
   const { projectId, userRequest, context } = req.body;
-  const userId = req.user.studentId;
+  const userId = req.user.id;
 
   const client = await db.getClient();
   try {
@@ -130,7 +130,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
 // List chapters for a project
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.studentId;
+    const userId = req.user.id;
     const { projectId } = req.query;
 
     let query = `
@@ -169,7 +169,7 @@ router.get('/', authenticateToken, async (req, res) => {
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.studentId;
+    const userId = req.user.id;
 
     const result = await db.query(
       `SELECT c.*, p.title as project_title, p.deliverable,
@@ -225,7 +225,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Complete chapter and generate artifact
 router.post('/:id/complete', authenticateToken, async (req, res) => {
   const { id } = req.params;
-  const userId = req.user.studentId;
+  const userId = req.user.id;
 
   const client = await db.getClient();
   try {

@@ -12,7 +12,7 @@ const kimiService = require('../services/kimiService');
 // Submit an attempt
 router.post('/', authenticateToken, async (req, res) => {
   const { chapterId, questionType, userAnswer, questionIndex } = req.body;
-  const userId = req.user.studentId;
+  const userId = req.user.id;
 
   const client = await db.getClient();
   try {
@@ -121,7 +121,7 @@ router.post('/', authenticateToken, async (req, res) => {
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.studentId;
+    const userId = req.user.id;
 
     const result = await db.query(
       `SELECT ca.*, c.title as chapter_title, c.project_id 
@@ -146,7 +146,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Retry an attempt (get mini-lesson)
 router.post('/:id/retry', authenticateToken, async (req, res) => {
   const { id } = req.params;
-  const userId = req.user.studentId;
+  const userId = req.user.id;
 
   try {
     // Get the attempt

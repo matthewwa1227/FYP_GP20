@@ -11,7 +11,7 @@ const db = require('../db/connection');
 // Get all artifacts for user
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.studentId;
+    const userId = req.user.id;
     const { search, tag } = req.query;
 
     let query = `
@@ -57,7 +57,7 @@ router.get('/', authenticateToken, async (req, res) => {
 router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.studentId;
+    const userId = req.user.id;
 
     const result = await db.query(
       `SELECT ka.*, p.title as project_title 
@@ -83,7 +83,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 router.get('/project/:projectId', authenticateToken, async (req, res) => {
   try {
     const { projectId } = req.params;
-    const userId = req.user.studentId;
+    const userId = req.user.id;
 
     // Verify user owns this project
     const projectCheck = await db.query(
@@ -120,7 +120,7 @@ router.get('/project/:projectId', authenticateToken, async (req, res) => {
 // Search artifacts
 router.get('/search/all', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.studentId;
+    const userId = req.user.id;
     const { q } = req.query;
 
     if (!q) {

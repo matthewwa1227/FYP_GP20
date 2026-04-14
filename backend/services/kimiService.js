@@ -1676,7 +1676,7 @@ RULES:
     const response = await kimi.chat.completions.create({
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
+      temperature: 1,
       response_format: { type: 'json_object' }
     });
 
@@ -1958,7 +1958,7 @@ CRITICAL RULES:
     const response = await kimi.chat.completions.create({
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.8,
+      temperature: 1,
       response_format: { type: 'json_object' }
     });
 
@@ -2073,7 +2073,7 @@ VALIDATION RULES:
     const response = await kimi.chat.completions.create({
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.4,
+      temperature: 1,
       response_format: { type: 'json_object' }
     });
 
