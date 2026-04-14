@@ -48,11 +48,18 @@ router.post('/generate', authenticateToken, async (req, res) => {
         }
       : null;
 
+    // Determine next chapter number (avoid duplicates)
+    const maxChapterRes = await client.query(
+      `SELECT COALESCE(MAX(chapter_number), 0) as max_num FROM chapters WHERE project_id = $1`,
+      [projectId]
+    );
+    const nextChapterNumber = parseInt(maxChapterRes.rows[0].max_num) + 1;
+
     // Generate chapter content via AI
     const chapterContent = await kimiService.generateChapter({
       topic: project.title,
-      chapterNumber: previousTitles.length + 1,
-      skillName: userRequest || `Chapter ${previousTitles.length + 1}`,
+      chapterNumber: nextChapterNumber,
+      skillName: userRequest || `Chapter ${nextChapterNumber}`,
       projectContext: project.description,
       deliverable: project.deliverable,
       previousContext
@@ -61,7 +68,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
     // Generate questions
     const questions = await kimiService.generateQuestions({
       topic: project.title,
-      chapterTitle: userRequest || `Chapter ${previousTitles.length + 1}`,
+      chapterTitle: userRequest || `Chapter ${nextChapterNumber}`,
       lessonContent: chapterContent.fullLesson,
       count: 3
     });
@@ -82,8 +89,8 @@ router.post('/generate', authenticateToken, async (req, res) => {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
       RETURNING *`,
       [
-        projectId, previousTitles.length + 1,
-        userRequest || `Chapter ${previousTitles.length + 1}`,
+        projectId, nextChapterNumber,
+        userRequest || `Chapter ${nextChapterNumber}`,
         chapterContent.focus || userRequest || `Chapter ${previousTitles.length + 1}`,
         chapterContent.context || project.description,
         JSON.stringify(content),
