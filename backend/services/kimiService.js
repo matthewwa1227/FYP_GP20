@@ -1734,7 +1734,7 @@ RULES:
     const response = await kimi.chat.completions.create({
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
+      temperature: 1,
       response_format: { type: 'json_object' }
     });
 
@@ -1790,7 +1790,7 @@ RULES:
     const response = await kimi.chat.completions.create({
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
+      temperature: 1,
       response_format: { type: 'json_object' }
     });
 
@@ -1840,7 +1840,7 @@ TONE:
     const response = await kimi.chat.completions.create({
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
+      temperature: 1,
       response_format: { type: 'json_object' }
     });
 
@@ -1885,7 +1885,7 @@ STYLE:
     const response = await kimi.chat.completions.create({
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
+      temperature: 1,
       response_format: { type: 'json_object' }
     });
 
