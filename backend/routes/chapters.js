@@ -33,17 +33,18 @@ router.post('/generate', authenticateToken, async (req, res) => {
 
     // Get previous chapter titles for context
     const prevChapters = await client.query(
-      `SELECT title, key_points FROM chapters 
+      `SELECT title, content FROM chapters 
        WHERE project_id = $1 AND status = 'completed'
        ORDER BY chapter_number`,
       [projectId]
     );
 
     const previousTitles = prevChapters.rows.map(c => c.title);
-    const previousContext = prevChapters.rows.length > 0 
+    const lastChapter = prevChapters.rows.length > 0 ? prevChapters.rows[prevChapters.rows.length - 1] : null;
+    const previousContext = lastChapter
       ? {
-          title: prevChapters.rows[prevChapters.rows.length - 1].title,
-          keyPoints: prevChapters.rows[prevChapters.rows.length - 1].key_points || []
+          title: lastChapter.title,
+          keyPoints: lastChapter.content?.keyPoints || []
         }
       : null;
 
@@ -65,37 +66,49 @@ router.post('/generate', authenticateToken, async (req, res) => {
       count: 3
     });
 
+    // Build content JSONB
+    const content = {
+      keyPoints: chapterContent.keyPoints,
+      fullLesson: chapterContent.fullLesson,
+      whyItMatters: chapterContent.whyItMatters,
+      questions: questions
+    };
+
     // Insert chapter
     const chapterResult = await client.query(
       `INSERT INTO chapters (
-        project_id, user_id, chapter_number, title, 
-        context, key_points, full_lesson, why_it_matters,
-        questions, status, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+        project_id, chapter_number, title, 
+        focus_area, context, content, status, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
       RETURNING *`,
       [
-        projectId, userId, previousTitles.length + 1,
+        projectId, previousTitles.length + 1,
         userRequest || `Chapter ${previousTitles.length + 1}`,
-        chapterContent.context,
-        chapterContent.keyPoints,
-        chapterContent.fullLesson,
-        chapterContent.whyItMatters,
-        JSON.stringify(questions),
-        'active'
+        chapterContent.focus || userRequest || `Chapter ${previousTitles.length + 1}`,
+        chapterContent.context || project.description,
+        JSON.stringify(content),
+        'available'
       ]
     );
 
     // Update project's current chapter
     await client.query(
-      'UPDATE projects SET current_chapter_id = $1 WHERE id = $2',
-      [chapterResult.rows[0].id, projectId]
+      'UPDATE projects SET current_chapter = $1 WHERE id = $2',
+      [chapterResult.rows[0].chapter_number, projectId]
     );
 
     await client.query('COMMIT');
 
+    const row = chapterResult.rows[0];
     res.json({
       success: true,
-      chapter: chapterResult.rows[0]
+      chapter: {
+        ...row,
+        full_lesson: row.content?.fullLesson,
+        key_points: row.content?.keyPoints,
+        why_it_matters: row.content?.whyItMatters,
+        questions: row.content?.questions
+      }
     });
 
   } catch (error) {
@@ -114,10 +127,14 @@ router.get('/', authenticateToken, async (req, res) => {
     const { projectId } = req.query;
 
     let query = `
-      SELECT c.*, p.title as project_title 
+      SELECT c.*, p.title as project_title,
+        c.content->>'fullLesson' as full_lesson,
+        c.content->'keyPoints' as key_points,
+        c.content->>'whyItMatters' as why_it_matters,
+        c.content->'questions' as questions
       FROM chapters c
       JOIN projects p ON c.project_id = p.id
-      WHERE c.user_id = $1
+      WHERE p.user_id = $1
     `;
     const params = [userId];
 
@@ -148,10 +165,14 @@ router.get('/:id', authenticateToken, async (req, res) => {
     const userId = req.user.studentId;
 
     const result = await db.query(
-      `SELECT c.*, p.title as project_title, p.deliverable 
+      `SELECT c.*, p.title as project_title, p.deliverable,
+        c.content->>'fullLesson' as full_lesson,
+        c.content->'keyPoints' as key_points,
+        c.content->>'whyItMatters' as why_it_matters,
+        c.content->'questions' as questions
        FROM chapters c
        JOIN projects p ON c.project_id = p.id
-       WHERE c.id = $1 AND c.user_id = $2`,
+       WHERE c.id = $1 AND p.user_id = $2`,
       [id, userId]
     );
 
@@ -160,6 +181,15 @@ router.get('/:id', authenticateToken, async (req, res) => {
     }
 
     const chapter = result.rows[0];
+
+    // If chapter is available, mark as in_progress when fetched
+    if (chapter.status === 'available') {
+      await db.query(
+        `UPDATE chapters SET status = 'in_progress' WHERE id = $1`,
+        [id]
+      );
+      chapter.status = 'in_progress';
+    }
 
     // Get user's artifacts for this project (for sidebar)
     const artifactsResult = await db.query(
@@ -194,9 +224,14 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // Get chapter
+    // Get chapter (verify ownership via project join)
     const chapterResult = await client.query(
-      'SELECT * FROM chapters WHERE id = $1 AND user_id = $2',
+      `SELECT c.*,
+        c.content->>'fullLesson' as full_lesson,
+        c.content->'keyPoints' as key_points
+       FROM chapters c
+       JOIN projects p ON c.project_id = p.id
+       WHERE c.id = $1 AND p.user_id = $2`,
       [id, userId]
     );
 
@@ -216,20 +251,22 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
     );
 
     // Generate knowledge artifact
+    const keyPoints = Array.isArray(chapter.key_points)
+      ? chapter.key_points
+      : (chapter.key_points || []);
+
     const artifact = await kimiService.generateKnowledgeArtifact({
       topic: chapter.title,
       chapterTitle: chapter.title,
       focusArea: chapter.context,
-      keyPoints: Array.isArray(chapter.key_points) 
-        ? chapter.key_points 
-        : JSON.parse(chapter.key_points || '[]'),
+      keyPoints: keyPoints,
       fullLesson: chapter.full_lesson
     });
 
     // Save artifact
     const artifactResult = await client.query(
       `INSERT INTO knowledge_artifacts (
-        project_id, chapter_id, user_id, title, content_markdown, 
+        project_id, chapter_id, user_id, title, content, 
         summary, tags, created_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
       RETURNING *`,

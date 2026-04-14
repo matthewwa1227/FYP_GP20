@@ -183,9 +183,9 @@ router.post('/:id/suggest-next', authenticateToken, async (req, res) => {
     // Get completed chapters
     const chaptersResult = await db.query(
       `SELECT title, status FROM chapters 
-       WHERE project_id = $1 AND user_id = $2
+       WHERE project_id = $1
        ORDER BY chapter_number`,
-      [id, userId]
+      [id]
     );
 
     const completedChapters = chaptersResult.rows.filter(c => c.status === 'completed');
@@ -197,7 +197,7 @@ router.post('/:id/suggest-next', authenticateToken, async (req, res) => {
     // Check if there's an active boss battle
     const activeBoss = await db.query(
       `SELECT id FROM boss_battles 
-       WHERE project_id = $1 AND user_id = $2 AND status = 'active'`,
+       WHERE project_id = $1 AND user_id = $2 AND status = 'in_progress'`,
       [id, userId]
     );
 

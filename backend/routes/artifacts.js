@@ -24,7 +24,7 @@ router.get('/', authenticateToken, async (req, res) => {
     let paramIndex = 2;
 
     if (search) {
-      query += ` AND (ka.title ILIKE $${paramIndex} OR ka.content_markdown ILIKE $${paramIndex} OR ka.summary ILIKE $${paramIndex})`;
+      query += ` AND (ka.title ILIKE $${paramIndex} OR ka.content ILIKE $${paramIndex} OR ka.summary ILIKE $${paramIndex})`;
       params.push(`%${search}%`);
       paramIndex++;
     }
@@ -97,7 +97,7 @@ router.get('/project/:projectId', authenticateToken, async (req, res) => {
 
     // Get artifacts for this project
     const result = await db.query(
-      `SELECT ka.id, ka.title, ka.content_markdown, ka.tags, 
+      `SELECT ka.id, ka.title, ka.content, ka.tags, 
               ka.summary, ka.created_at
        FROM knowledge_artifacts ka
        WHERE ka.project_id = $1 AND ka.user_id = $2
@@ -133,7 +133,7 @@ router.get('/search/all', authenticateToken, async (req, res) => {
        JOIN projects p ON ka.project_id = p.id
        WHERE ka.user_id = $1 
        AND (ka.title ILIKE $2 
-            OR ka.content_markdown ILIKE $2 
+            OR ka.content ILIKE $2 
             OR ka.summary ILIKE $2
             OR EXISTS (SELECT 1 FROM unnest(ka.tags) tag WHERE tag ILIKE $2))
        ORDER BY ka.created_at DESC`,
