@@ -11,8 +11,10 @@ const kimiService = require('../services/kimiService');
 
 // Generate a single chapter (on-demand)
 router.post('/generate', authenticateToken, async (req, res) => {
+  console.log('🚀 POST /chapters/generate received', req.body);
   const { projectId, userRequest, context } = req.body;
   const userId = req.user.id;
+  console.log('👤 userId:', userId);
 
   const client = await db.getClient();
   try {
@@ -105,6 +107,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
     );
 
     await client.query('COMMIT');
+    console.log('✅ Chapter generated successfully:', chapterResult.rows[0].id);
 
     const row = chapterResult.rows[0];
     res.json({
@@ -120,7 +123,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
 
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Error generating chapter:', error);
+    console.error('❌ Error generating chapter:', error);
     res.status(500).json({ error: 'Failed to generate chapter' });
   } finally {
     client.release();

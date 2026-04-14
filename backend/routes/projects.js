@@ -11,8 +11,10 @@ const kimiService = require('../services/kimiService');
 
 // Create new project with AI-generated scope
 router.post('/', authenticateToken, async (req, res) => {
+  console.log('🚀 POST /projects received', req.body);
   const { topic, goal, subject } = req.body;
   const userId = req.user.id;
+  console.log('👤 userId:', userId);
 
   if (!topic) {
     return res.status(400).json({ error: 'Topic is required' });
@@ -47,6 +49,7 @@ router.post('/', authenticateToken, async (req, res) => {
 
     await client.query('COMMIT');
 
+    console.log('✅ Project created:', project.id);
     res.status(201).json({
       success: true,
       project: {
@@ -57,7 +60,7 @@ router.post('/', authenticateToken, async (req, res) => {
 
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Error creating project:', error);
+    console.error('❌ Error creating project:', error);
     res.status(500).json({ error: 'Failed to create project' });
   } finally {
     client.release();
