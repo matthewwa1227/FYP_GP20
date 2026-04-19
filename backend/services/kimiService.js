@@ -1875,32 +1875,31 @@ TONE:
  * Generate knowledge artifact (cheat sheet) after chapter completion
  */
 async function generateKnowledgeArtifact({ topic, chapterTitle, focusArea, keyPoints, fullLesson }) {
-  const prompt = `Create a knowledge artifact (cheat sheet) for this completed chapter.
+  const prompt = `Create a brief knowledge artifact (cheat sheet).
 
 TOPIC: ${topic}
 CHAPTER: ${chapterTitle}
-FOCUS: ${focusArea}
 KEY POINTS: ${keyPoints.join(', ')}
 
 OUTPUT FORMAT (JSON):
 {
-  "title": "Short, memorable title (e.g., 'Pandas CSV Loading Cheat Sheet')",
-  "summary": "One-sentence summary of what this artifact covers",
-  "content": "Markdown-formatted reference guide. Include:\n- Quick reference table\n- Common code patterns\n- Gotchas and warnings\n- Links to related concepts",
-  "tags": ["tag1", "tag2", "tag3"]
+  "title": "Short title",
+  "summary": "1 sentence",
+  "content": "Bullet points only. 100-150 words.",
+  "tags": ["tag1", "tag2"]
 }
 
 STYLE:
-- Scannable format (tables, bullet points)
-- Copy-paste ready code examples
-- Practical, not theoretical
-- Easy to reference during practice`;
+- Bullet points only
+- No tables or code blocks
+- Practical and concise`;
 
   try {
     const response = await kimi.chat.completions.create({
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
       temperature: 1,
+      max_tokens: 800,
       response_format: { type: 'json_object' }
     });
 
