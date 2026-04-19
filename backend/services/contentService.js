@@ -93,6 +93,11 @@ const processDocument = async (filePath, mimeType) => {
       // For DOCX, extract text
       content = await extractDocxText(filePath);
       
+    } else if (mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || 
+               filePath.endsWith('.pptx')) {
+      // For PPTX, extract text
+      content = await extractPptxText(filePath);
+      
     } else if (mimeType === 'text/markdown' || filePath.endsWith('.md')) {
       content = await fs.readFile(filePath, 'utf-8');
       
@@ -133,41 +138,50 @@ const processDocument = async (filePath, mimeType) => {
   }
 };
 
-// Simple PDF text extraction (placeholder - would use pdf-parse in production)
+// PDF text extraction using pdf-parse
 const extractPdfText = async (filePath) => {
-  // For now, read as text in case it's a text-based PDF
-  // In production: npm install pdf-parse
   try {
+    const pdfParse = require('pdf-parse');
     const buffer = await fs.readFile(filePath);
-    // Try to extract text from PDF buffer
-    const text = buffer.toString('utf-8');
-    // PDFs have binary data, but text might be extractable
-    const cleanText = text.replace(/[^\x20-\x7E\n\r\t]/g, ' ').trim();
-    if (cleanText.length > 100) {
-      return cleanText.substring(0, 10000);
+    const data = await pdfParse(buffer);
+    if (data.text && data.text.trim().length > 50) {
+      return data.text.trim().substring(0, 50000);
     }
-    
-    return `[PDF Document: ${path.basename(filePath)}]
-
-Note: PDF text extraction requires 'pdf-parse' library.
-To enable: npm install pdf-parse
-
-For now, please use TXT format or paste the exercise text directly.`;
+    return `[PDF Document: ${path.basename(filePath)}] — No extractable text found.`;
   } catch (error) {
-    return `[PDF Document: ${path.basename(filePath)}]`;
+    console.error('PDF extraction error:', error.message);
+    return `[PDF Document: ${path.basename(filePath)}] — Extraction failed: ${error.message}`;
   }
 };
 
-// Simple DOCX text extraction (placeholder)
+// DOCX text extraction using mammoth
 const extractDocxText = async (filePath) => {
-  // DOCX files are ZIP archives with XML inside
-  // In production: npm install mammoth
-  return `[DOCX Document: ${path.basename(filePath)}]
+  try {
+    const mammoth = require('mammoth');
+    const result = await mammoth.extractRawText({ path: filePath });
+    if (result.value && result.value.trim().length > 50) {
+      return result.value.trim().substring(0, 50000);
+    }
+    return `[DOCX Document: ${path.basename(filePath)}] — No extractable text found.`;
+  } catch (error) {
+    console.error('DOCX extraction error:', error.message);
+    return `[DOCX Document: ${path.basename(filePath)}] — Extraction failed: ${error.message}`;
+  }
+};
 
-Note: DOCX text extraction requires 'mammoth' library.
-To enable: npm install mammoth
-
-For now, please convert to TXT format or paste the exercise text directly.`;
+// PPTX text extraction using officeparser
+const extractPptxText = async (filePath) => {
+  try {
+    const officeParser = require('officeparser');
+    const text = await officeParser.parseOfficeAsync(filePath);
+    if (text && text.trim().length > 50) {
+      return text.trim().substring(0, 50000);
+    }
+    return `[PPTX Document: ${path.basename(filePath)}] — No extractable text found.`;
+  } catch (error) {
+    console.error('PPTX extraction error:', error.message);
+    return `[PPTX Document: ${path.basename(filePath)}] — Extraction failed: ${error.message}`;
+  }
 };
 
 // Image OCR placeholder
