@@ -83,10 +83,14 @@ app.use('/api/student', userLimiter);
 // ============================================
 // REQUEST TIMEOUT HANDLER (MISSION 62)
 // Prevents hanging requests from consuming connections
+// Render limit is ~100s, we match that to avoid premature 503s on AI endpoints
 // ============================================
 app.use((req, res, next) => {
-  // Set timeout for all requests (Render has 100s limit, we use 55s)
-  req.setTimeout(55000, () => {
+  req.setTimeout(100000, () => {
+    if (res.headersSent) {
+      console.warn(`⏱️ Request timeout (headers already sent): ${req.method} ${req.path}`);
+      return;
+    }
     console.error(`⏱️ Request timeout: ${req.method} ${req.path}`);
     res.status(503).json({
       success: false,

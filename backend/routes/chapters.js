@@ -11,9 +11,6 @@ const kimiService = require('../services/kimiService');
 
 // Generate a single chapter (on-demand)
 router.post('/generate', authenticateToken, async (req, res) => {
-  // Override global timeout for this heavy AI endpoint (Render limit is ~100s)
-  req.setTimeout(90000);
-  res.setTimeout(90000);
   console.log('🚀 POST /chapters/generate received', req.body);
   const { projectId, userRequest, context } = req.body;
   const userId = req.user.id;
