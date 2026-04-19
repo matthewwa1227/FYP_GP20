@@ -121,6 +121,7 @@ app.get('/api/health', async (req, res) => {
       status,
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
+      version: 'archive-fix-v2',
       database: {
         connected: true,
         responseTime: dbResult.rows[0].time,
