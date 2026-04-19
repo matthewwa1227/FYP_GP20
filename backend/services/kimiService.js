@@ -2306,6 +2306,108 @@ VALIDATION RULES:
   }
 }
 
+/**
+ * Generate Archive Alchemist notes from document content
+ * Returns structured study materials: notes, flashcards, summary, master artifact
+ */
+async function generateArchiveNotes(content, title, tierInfo) {
+  const tier = getTierPrompt(tierInfo);
+  const effectiveAgeTier = tierInfo?.ageTier || deriveAgeTierFromFormLevel(tierInfo?.formLevel) || 'P4-P6';
+
+  const prompt = `You are the Archive Alchemist - an AI that transforms documents into magical study materials.
+
+DOCUMENT TITLE: ${title}
+STUDENT AGE TIER: ${effectiveAgeTier}
+LANGUAGE RULE: ${tier.language}
+
+DOCUMENT CONTENT (first 8000 chars):
+${content.substring(0, 8000)}
+
+Transmute this document into the following JSON structure. Keep content concise but comprehensive.
+
+OUTPUT FORMAT (valid JSON only):
+{
+  "notes": {
+    "title": "Document title for notes",
+    "sections": [
+      {
+        "heading": "Section heading",
+        "body": "Formatted markdown-style content. Use plain text with **bold** for emphasis. Keep paragraphs short (2-4 sentences).",
+        "highlight": "Optional key insight or quote from this section"
+      }
+    ]
+  },
+  "flashcards": [
+    {
+      "question": "Clear, specific question",
+      "answer": "Concise answer (1-2 sentences)",
+      "difficulty": "easy|medium|hard"
+    }
+  ],
+  "summary": "A 3-5 sentence executive summary of the entire document.",
+  "masterArtifact": {
+    "title": "Concept Map / Master Insight title",
+    "description": "A unifying insight that connects all key concepts",
+    "keyRelationships": [
+      {"from": "Concept A", "to": "Concept B", "relationship": "how they connect"}
+    ]
+  },
+  "xpEarned": 150
+}
+
+RULES:
+1. Language must match the student's age tier: ${tier.language}
+2. For P1-P3: Use very simple words, short sentences, everyday examples.
+3. For P4-P6: Use clear simple English with everyday comparisons.
+4. For S1-S3: Use normal school English.
+5. For S4-S6: Use proper academic English suitable for DSE.
+6. Generate 3-5 flashcards.
+7. Generate 2-4 note sections.
+8. The master artifact should reveal a "big picture" insight.
+9. Return ONLY valid JSON. No markdown code fences.`;
+
+  try {
+    console.log(`🤖 [generateArchiveNotes] Sending prompt for: ${title}`);
+    const response = await kimi.chat.completions.create({
+      model: 'kimi-k2.5',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 4000,
+      thinking: { type: 'disabled' }
+    });
+
+    let raw = response.choices[0].message.content || '';
+    raw = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+
+    const result = JSON.parse(raw);
+
+    // Normalize fields
+    return {
+      notes: result.notes || { title: title, sections: [] },
+      flashcards: Array.isArray(result.flashcards) ? result.flashcards : [],
+      summary: result.summary || '',
+      masterArtifact: result.masterArtifact || { title: 'Key Insights', description: '', keyRelationships: [] },
+      xpEarned: result.xpEarned || 150
+    };
+  } catch (error) {
+    console.error('❌ [generateArchiveNotes] AI generation failed:', error.message);
+    // Return fallback
+    return {
+      notes: {
+        title: title,
+        sections: [
+          { heading: 'Overview', body: 'The document covers key concepts related to the topic.', highlight: '' }
+        ]
+      },
+      flashcards: [
+        { question: `What is the main topic of "${title}"?`, answer: 'The document explores key concepts and principles related to this subject.', difficulty: 'easy' }
+      ],
+      summary: `This document, titled "${title}", contains important information that can be studied using the generated notes and flashcards.`,
+      masterArtifact: { title: 'Core Insight', description: 'The document reveals fundamental principles worth mastering.', keyRelationships: [] },
+      xpEarned: 150
+    };
+  }
+}
+
 // ============================================
 // EXPORTS
 // ============================================
@@ -2333,5 +2435,6 @@ module.exports = {
   generateDiagnosis,
   generateKnowledgeArtifact,
   generateBossBattle,
-  validateBossStage
+  validateBossStage,
+  generateArchiveNotes
 };

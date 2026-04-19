@@ -197,6 +197,7 @@ app.use('/api/ai/story', require('./routes/aiStory'));
 app.use('/api/storyquest', require('./routes/storyquest'));
 app.use('/api/schedule', require('./routes/schedule'));
 app.use('/api/revision', require('./routes/revision'));
+app.use('/api/archive', require('./routes/archive'));
 app.use('/api/progress', require('./routes/progress'));
 app.use('/api/rewards', require('./routes/rewards'));
 app.use('/api/teacher', require('./routes/teacher'));
