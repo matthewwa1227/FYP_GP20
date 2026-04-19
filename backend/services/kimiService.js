@@ -1683,8 +1683,7 @@ RULES:
         messages: [{ role: 'user', content: prompt }],
         temperature: 1,
         max_tokens: 3000,
-        timeout: 60000,
-        response_format: { type: 'json_object' }
+        thinking: { type: 'disabled' }
       });
 
       let raw = response.choices[0].message.content || '';
@@ -1776,8 +1775,7 @@ RULES:
         messages: [{ role: 'user', content: prompt }],
         temperature: 1,
         max_tokens: 3000,
-        timeout: 60000,
-        response_format: { type: 'json_object' }
+        thinking: { type: 'disabled' }
       });
 
       let raw = response.choices[0].message.content || '';
@@ -1875,10 +1873,13 @@ RULES:
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
       temperature: 1,
-      response_format: { type: 'json_object' }
+      max_tokens: 3000,
+      thinking: { type: 'disabled' }
     });
 
-    const result = JSON.parse(response.choices[0].message.content);
+    let raw = response.choices[0].message.content || '';
+    raw = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+    const result = JSON.parse(raw);
     return result.questions || [];
   } catch (error) {
     logger.error('❌ Question generation error:', error);
@@ -1925,10 +1926,13 @@ TONE:
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
       temperature: 1,
-      response_format: { type: 'json_object' }
+      max_tokens: 2000,
+      thinking: { type: 'disabled' }
     });
 
-    return JSON.parse(response.choices[0].message.content);
+    let raw = response.choices[0].message.content || '';
+    raw = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+    return JSON.parse(raw);
   } catch (error) {
     logger.error('❌ Diagnosis generation error:', error);
     return {
@@ -1969,8 +1973,7 @@ STYLE:
       messages: [{ role: 'user', content: prompt }],
       temperature: 1,
       max_tokens: 1500,
-      timeout: 30000,
-      response_format: { type: 'json_object' }
+      thinking: { type: 'disabled' }
     });
 
     let raw = response.choices[0].message.content || '';
@@ -2053,10 +2056,12 @@ CRITICAL RULES:
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
       temperature: 1,
-      response_format: { type: 'json_object' }
+      max_tokens: 4000,
+      thinking: { type: 'disabled' }
     });
 
-    const rawContent = response.choices[0].message.content;
+    let rawContent = response.choices[0].message.content || '';
+    rawContent = rawContent.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
     console.log(`🤖 [generateBossBattle] AI raw response length: ${rawContent.length} chars`);
     
     const result = JSON.parse(rawContent);
@@ -2172,10 +2177,13 @@ VALIDATION RULES:
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
       temperature: 1,
-      response_format: { type: 'json_object' }
+      max_tokens: 3000,
+      thinking: { type: 'disabled' }
     });
 
-    const result = JSON.parse(response.choices[0].message.content);
+    let raw = response.choices[0].message.content || '';
+    raw = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+    const result = JSON.parse(raw);
     
     // Normalize upstreamDependency
     if (result.upstreamDependency !== undefined && result.upstreamDependency !== null) {
