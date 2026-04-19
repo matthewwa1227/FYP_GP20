@@ -1720,7 +1720,16 @@ OUTPUT FORMAT (JSON):
   "focus": "What specific skill this chapter teaches",
   "keyPoints": ["3-5 bullet points of key concepts"],
   "fullLesson": "Detailed explanation (300-500 words). For technical topics, include code examples. For language/humanities topics, include clear explanations, examples, comparisons, and practice exercises. Connect to project.",
-  "whyItMatters": "How this connects to the final deliverable (2-3 sentences)"
+  "whyItMatters": "How this connects to the final deliverable (2-3 sentences)",
+  "questions": [
+    {
+      "type": "fill_blank|code_execution|error_analysis|concept_synthesis|multiple_choice",
+      "data": { "question": "...", "starterCode": "...", "blanks": [...], "options": [...] },
+      "correctAnswer": "...",
+      "explanation": "Detailed explanation of why this is correct",
+      "hint": "Subtle hint without giving away answer"
+    }
+  ]
 }
 
 RULES:
@@ -1728,6 +1737,10 @@ RULES:
 - Full lesson should be hands-on, not theoretical
 - For technical topics (Programming, Data Science, etc.): include working code examples
 - For language/humanities topics (English, History, etc.): include clear examples, before/after comparisons, and mini practice prompts
+- Include exactly 3 practice questions in the "questions" array
+- Question types: technical topics → code_execution, error_analysis, concept_synthesis; language/humanities → multiple_choice, fill_blank with sentences, error_analysis with text
+- Provide 4 options for error_analysis, concept_synthesis, and multiple_choice
+- Questions must be answerable using ONLY the lesson content
 - Connect everything back to the project goal
 - Progressive complexity (Chapter ${chapterNumber} should build on previous)`;
 

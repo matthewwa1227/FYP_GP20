@@ -63,20 +63,12 @@ router.post('/generate', authenticateToken, async (req, res) => {
       previousContext
     });
 
-    // Generate questions (outside transaction)
-    const questions = await kimiService.generateQuestions({
-      topic: project.title,
-      chapterTitle: userRequest || `Chapter ${nextChapterNumber}`,
-      lessonContent: chapterContent.fullLesson,
-      count: 3
-    });
-
-    // Build content JSONB
+    // Build content JSONB (questions are now generated in the same AI call as the chapter)
     const content = {
       keyPoints: chapterContent.keyPoints,
       fullLesson: chapterContent.fullLesson,
       whyItMatters: chapterContent.whyItMatters,
-      questions: questions
+      questions: chapterContent.questions || []
     };
 
     // Short transaction for INSERT + UPDATE only
