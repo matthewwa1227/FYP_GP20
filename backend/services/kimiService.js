@@ -2436,17 +2436,27 @@ OUTPUT (valid JSON only — no markdown code fences):
   try {
     console.log(`🤖 [generateArchiveNotes] Sending prompt for: ${title}`);
 
-    // Timeout wrapper: 35 seconds max
-    const aiPromise = kimi.chat.completions.create({
-      model: 'kimi-k2.5',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 4000,
-      thinking: { type: 'disabled' }
-    });
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('AI generation timed out after 35s')), 35000)
-    );
-    const response = await Promise.race([aiPromise, timeoutPromise]);
+    // Use AbortController for reliable request cancellation
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.warn(`⏰ [generateArchiveNotes] Aborting request for "${title}" after 35s`);
+      controller.abort();
+    }, 35000);
+
+    let response;
+    try {
+      response = await kimi.chat.completions.create({
+        model: 'kimi-k2.5',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 4000,
+        stream: false
+      }, {
+        signal: controller.signal,
+        timeout: 40000
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     let raw = response.choices[0].message.content || '';
     raw = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();

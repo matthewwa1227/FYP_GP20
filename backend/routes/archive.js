@@ -59,68 +59,119 @@ router.use(authenticateToken);
 // HELPER: Generate archive notes in background
 // ============================================
 async function generateArchiveNotesInBackground(sessionId, text, title, userId) {
-  let lastError = null;
+  const SAFETY_TIMEOUT_MS = 90000; // 90 seconds absolute max
+  let completed = false;
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  // Safety net: if anything hangs forever, force-mark as failed
+  const safetyTimer = setTimeout(async () => {
+    if (completed) return;
+    console.error(`⏰ [Archive ${sessionId}] SAFETY TIMEOUT: forcing failed status after ${SAFETY_TIMEOUT_MS}ms`);
     try {
-      console.log(`🔄 [Archive ${sessionId}] Attempt ${attempt}/2`);
-
-      // Get user's tier info for age-appropriate content
-      const userRes = await db.query(
-        'SELECT age_tier, form_level FROM students WHERE id = $1',
-        [userId]
-      );
-      const dbTier = userRes.rows[0] || {};
-      const tierInfo = {
-        ageTier: dbTier.age_tier || null,
-        formLevel: dbTier.form_level || null
-      };
-
-      const result = await kimiService.generateArchiveNotes(text, title, tierInfo);
-
       await db.query(
         `UPDATE archive_sessions
-         SET generated_notes = $1,
-             flashcards = $2,
-             summary = $3,
-             master_artifact = $4,
-             status = 'completed',
-             xp_earned = $5,
+         SET status = 'failed',
+             error_message = $1,
              updated_at = NOW()
-         WHERE id = $6`,
-        [
-          JSON.stringify(result.notes || {}),
-          JSON.stringify(result.flashcards || []),
-          result.summary || '',
-          JSON.stringify(result.masterArtifact || {}),
-          result.xpEarned || 150,
-          sessionId
-        ]
+         WHERE id = $2`,
+        ['The Alchemist timed out. The AI service took too long to respond. Please try again with a shorter document.', sessionId]
       );
+    } catch (dbErr) {
+      console.error(`❌ [Archive ${sessionId}] Failed to write safety timeout status:`, dbErr.message);
+    }
+  }, SAFETY_TIMEOUT_MS);
 
-      console.log(`✅ [Archive ${sessionId}] Completed on attempt ${attempt}`);
-      return;
+  let lastError = null;
 
-    } catch (error) {
-      lastError = error;
-      console.error(`❌ [Archive ${sessionId}] Attempt ${attempt} failed:`, error.message);
-      if (attempt < 2) {
-        console.log(`⏳ [Archive ${sessionId}] Retrying in 3 seconds...`);
-        await new Promise(r => setTimeout(r, 3000));
+  try {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        console.log(`🔄 [Archive ${sessionId}] Attempt ${attempt}/2`);
+
+        // Get user's tier info for age-appropriate content
+        const userRes = await db.query(
+          'SELECT age_tier, form_level FROM students WHERE id = $1',
+          [userId]
+        );
+        const dbTier = userRes.rows[0] || {};
+        const tierInfo = {
+          ageTier: dbTier.age_tier || null,
+          formLevel: dbTier.form_level || null
+        };
+
+        // Hard timeout per attempt: 45 seconds
+        const result = await Promise.race([
+          kimiService.generateArchiveNotes(text, title, tierInfo),
+          new Promise((_, reject) => {
+            const t = setTimeout(() => reject(new Error('Attempt timed out after 45s')), 45000);
+            if (t.unref) t.unref();
+          })
+        ]);
+
+        await db.query(
+          `UPDATE archive_sessions
+           SET generated_notes = $1,
+               flashcards = $2,
+               summary = $3,
+               master_artifact = $4,
+               status = 'completed',
+               xp_earned = $5,
+               updated_at = NOW()
+           WHERE id = $6`,
+          [
+            JSON.stringify(result.notes || {}),
+            JSON.stringify(result.flashcards || []),
+            result.summary || '',
+            JSON.stringify(result.masterArtifact || {}),
+            result.xpEarned || 150,
+            sessionId
+          ]
+        );
+
+        console.log(`✅ [Archive ${sessionId}] Completed on attempt ${attempt}`);
+        completed = true;
+        return;
+
+      } catch (error) {
+        lastError = error;
+        console.error(`❌ [Archive ${sessionId}] Attempt ${attempt} failed:`, error.message || error);
+        if (attempt < 2) {
+          console.log(`⏳ [Archive ${sessionId}] Retrying in 3 seconds...`);
+          await new Promise(r => setTimeout(r, 3000));
+        }
       }
     }
-  }
 
-  // All attempts failed — mark as failed
-  console.error(`❌ [Archive ${sessionId}] All attempts failed.`);
-  await db.query(
-    `UPDATE archive_sessions
-     SET status = 'failed',
-         error_message = $1,
-         updated_at = NOW()
-     WHERE id = $2`,
-    [lastError?.message || 'Generation failed after 2 attempts', sessionId]
-  );
+    // All attempts failed — mark as failed
+    console.error(`❌ [Archive ${sessionId}] All attempts failed.`);
+    await db.query(
+      `UPDATE archive_sessions
+       SET status = 'failed',
+           error_message = $1,
+           updated_at = NOW()
+       WHERE id = $2`,
+      [lastError?.message || 'Generation failed after 2 attempts', sessionId]
+    );
+    completed = true;
+
+  } catch (fatalError) {
+    // Catch ANY unexpected error in the outer logic
+    console.error(`💥 [Archive ${sessionId}] FATAL error in background worker:`, fatalError.message || fatalError);
+    try {
+      await db.query(
+        `UPDATE archive_sessions
+         SET status = 'failed',
+             error_message = $1,
+             updated_at = NOW()
+         WHERE id = $2`,
+        [fatalError?.message || 'Unexpected error in background generation', sessionId]
+      );
+    } catch (dbErr) {
+      console.error(`❌ [Archive ${sessionId}] Failed to write fatal error status:`, dbErr.message);
+    }
+    completed = true;
+  } finally {
+    clearTimeout(safetyTimer);
+  }
 }
 
 // ============================================
