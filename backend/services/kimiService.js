@@ -1716,17 +1716,18 @@ FINAL DELIVERABLE: ${deliverable}${previousInfo}
 
 OUTPUT FORMAT (JSON):
 {
-  "context": "Real-world scenario opening (1-2 sentences, e.g., 'You need to load Apple Health data for analysis')",
+  "context": "Real-world scenario opening (1-2 sentences). Use a creative story framing if the topic is non-technical (e.g., language arts, history).",
   "focus": "What specific skill this chapter teaches",
   "keyPoints": ["3-5 bullet points of key concepts"],
-  "fullLesson": "Detailed explanation (300-500 words). Include code examples if technical. Connect to project.",
+  "fullLesson": "Detailed explanation (300-500 words). For technical topics, include code examples. For language/humanities topics, include clear explanations, examples, comparisons, and practice exercises. Connect to project.",
   "whyItMatters": "How this connects to the final deliverable (2-3 sentences)"
 }
 
 RULES:
-- Context must be practical and concrete
+- Context must be practical and concrete. Use creative narrative framing for non-technical subjects.
 - Full lesson should be hands-on, not theoretical
-- Include working code examples
+- For technical topics (Programming, Data Science, etc.): include working code examples
+- For language/humanities topics (English, History, etc.): include clear examples, before/after comparisons, and mini practice prompts
 - Connect everything back to the project goal
 - Progressive complexity (Chapter ${chapterNumber} should build on previous)`;
 
@@ -1765,8 +1766,8 @@ OUTPUT FORMAT (JSON):
 {
   "questions": [
     {
-      "type": "fill_blank|code_execution|error_analysis|concept_synthesis",
-      "data": { "question": "...", "starterCode": "...", "blanks": [...] },
+      "type": "fill_blank|code_execution|error_analysis|concept_synthesis|multiple_choice",
+      "data": { "question": "...", "starterCode": "...", "blanks": [...], "options": [...] },
       "correctAnswer": "...",
       "explanation": "Detailed explanation of why this is correct",
       "hint": "Subtle hint without giving away answer"
@@ -1776,14 +1777,16 @@ OUTPUT FORMAT (JSON):
 
 QUESTION TYPE GUIDELINES:
 1. fill_blank: Missing code/words to complete a working solution
-2. code_execution: Write code that passes specific test cases
-3. error_analysis: Given broken code, identify and fix the error
+2. code_execution: Write code that passes specific test cases (technical topics only)
+3. error_analysis: Given broken code or incorrect grammar/sentences, identify and fix the error
 4. concept_synthesis: Combine multiple concepts from the lesson
+5. multiple_choice: Best for language/humanities topics — provide 4 clear options
 
 RULES:
 - Questions must be answerable using ONLY the lesson content
-- Include actual working code in code_execution type
-- Provide 4 options for error_analysis and concept_synthesis
+- For technical topics: include actual working code in code_execution type
+- For language/humanities topics: use multiple_choice, fill_blank with sentences, or error_analysis with text
+- Provide 4 options for error_analysis, concept_synthesis, and multiple_choice
 - Make questions practical, not theoretical`;
 
   try {
@@ -1922,9 +1925,9 @@ ${artifactSummaries || '- No artifacts yet'}
 
 OUTPUT FORMAT (JSON):
 {
-  "title": "Epic battle name (e.g., 'The Dashboard Challenge')",
+  "title": "Epic battle name (e.g., 'The Grammar Goblin's Lair' or 'The Dashboard Challenge')",
   "description": "What the student must accomplish (2 sentences)",
-  "scenario": "Real-world context for the challenge (e.g., 'Client needs cleaned data by Friday')",
+  "scenario": "Real-world context for the challenge. Use creative narrative framing for non-technical subjects.",
   "deliverable": "Specific output required",
   "stages": [
     {
@@ -1942,17 +1945,24 @@ OUTPUT FORMAT (JSON):
 }
 
 STAGE STRUCTURE (exactly 3 stages):
+For TECHNICAL subjects (Programming, Data Science, etc.):
 - Stage 1: Basic application using 2 chapter skills simultaneously (e.g., CSV Loading + Data Cleaning)
-- Stage 2: Intermediate synthesis requiring 3 skills (e.g., Cleaning + Transformation + Initial Visualization). Stage 2 must consume the actual output from Stage 1.
+- Stage 2: Intermediate synthesis requiring 3 skills. Stage 2 must consume the actual output from Stage 1.
 - Stage 3: Complete solution integrating all skills. Stage 3 must consume the output from Stage 2.
+
+For LANGUAGE / HUMANITIES subjects (English, History, etc.):
+- Stage 1: Identify and apply basic concepts from 2 chapters (e.g., Spot passive voice + Convert to active voice)
+- Stage 2: Synthesize 3+ concepts in a cohesive piece (e.g., Write a paragraph using active voice, strong verbs, and correct punctuation). Stage 2 must build on Stage 1 skills.
+- Stage 3: Complete creative synthesis (e.g., Write a full story/essay applying all learned grammar skills). Stage 3 must incorporate Stage 2 output.
 
 CRITICAL RULES:
 1. Each stage MUST require 2-4 chapter skills simultaneously
 2. Stage N must explicitly build on Stage N-1 output
 3. Reference specific artifacts by their exact titles
 4. Make it feel epic but achievable
-5. Include realistic technical debt scenarios
-6. Validation criteria must be specific and testable`;
+5. For technical topics: include realistic technical debt scenarios. For language topics: include common mistakes and traps.
+6. Validation criteria must be specific and testable
+7. Adapt the battle theme to the subject. For English: use fantasy/narrative themes (Grammar Goblin, Word Wizard, etc.). For Programming: use builder/craft themes.`;
 
   try {
     const response = await kimi.chat.completions.create({
@@ -2062,12 +2072,12 @@ OUTPUT FORMAT (JSON):
 }
 
 VALIDATION RULES:
-1. FUNCTIONAL EQUIVALENCE: Any solution producing correct output passes, regardless of approach
+1. CORRECTNESS: Any correct solution passes, regardless of approach. For language/writing tasks, check grammar, structure, and concept application. For code tasks, check execution and output.
 2. BACKWARD TRACING: If this stage fails because of a bug in the previous stage solution, set upstreamDependency to the previous stage number (stageNumber - 1) and explain the root cause
 3. If userSolution doesn't use/consume previous stage output when required, that's an integration failure
 4. BE STRICT but FAIR: Must actually solve the stage deliverable
 5. Provide specific, actionable feedback referencing exact artifacts where helpful
-6. executionTrace should trace the data flow through the solution`;
+6. executionTrace should trace how the solution applies the concepts (data flow for code, logic flow for writing/grammar)`;
 
   try {
     const response = await kimi.chat.completions.create({
