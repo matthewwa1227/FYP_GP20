@@ -2310,83 +2310,159 @@ VALIDATION RULES:
  * Generate Archive Alchemist notes from document content
  * Returns structured study materials: notes, flashcards, summary, master artifact
  */
+// Smart fallback: split content into sections and extract key sentences
+function buildSmartFallback(content, title) {
+  const lines = content.split(/\n+/).map(l => l.trim()).filter(l => l.length > 10);
+  const sentences = content.match(/[^.!?]+[.!?]+/g) || [];
+
+  // Build sections from paragraphs
+  const sections = [];
+  const chunkSize = Math.ceil(lines.length / 3);
+  for (let i = 0; i < 3 && i * chunkSize < lines.length; i++) {
+    const chunk = lines.slice(i * chunkSize, (i + 1) * chunkSize);
+    const heading = chunk[0].length < 60 ? chunk[0] : `Section ${i + 1}`;
+    const body = chunk.slice(1).join('\n\n') || chunk[0];
+    sections.push({
+      heading: heading.length > 80 ? heading.substring(0, 80) + '...' : heading,
+      body: body.length > 800 ? body.substring(0, 800) + '...' : body,
+      highlight: ''
+    });
+  }
+  if (sections.length === 0) {
+    sections.push({ heading: 'Overview', body: content.substring(0, 1000), highlight: '' });
+  }
+
+  // Build flashcards from key sentences
+  const flashcards = [];
+  const keySents = sentences.filter(s => s.length > 30 && s.length < 200).slice(0, 5);
+  for (let i = 0; i < keySents.length && i < 4; i++) {
+    const sent = keySents[i].trim();
+    flashcards.push({
+      question: `Explain the significance of: "${sent.substring(0, 120)}${sent.length > 120 ? '...' : ''}"`,
+      answer: sent,
+      difficulty: 'medium'
+    });
+  }
+  if (flashcards.length === 0) {
+    flashcards.push({ question: `What is the main topic?`, answer: title, difficulty: 'easy' });
+  }
+
+  // Summary from first few sentences
+  const summarySents = sentences.slice(0, 4).join(' ');
+  const summary = summarySents.length > 20 ? summarySents : content.substring(0, 400);
+
+  // Extract key terms for relationships
+  const words = content.toLowerCase().match(/\b[a-z]{4,}\b/g) || [];
+  const freq = {};
+  words.forEach(w => { freq[w] = (freq[w] || 0) + 1; });
+  const topWords = Object.entries(freq)
+    .filter(([w]) => !['this','that','with','from','they','have','were','been','their','there','would','should','could','about','after','before','because','through','during','within','without','under','over','into','onto','upon','above','below','between','among','during','while','when','where','what','which','who','whom','whose','how','why','than','then','them','these','those','such','each','every','all','any','both','few','many','more','most','other','some','such','only','own','same','so','than','too','very','just','also','back','even','here','how','its','now','off','only','out','still','such','too","very","well"].includes(w))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([w]) => w);
+
+  const keyRelationships = [];
+  for (let i = 0; i < topWords.length - 1; i++) {
+    keyRelationships.push({
+      from: topWords[i],
+      to: topWords[i + 1],
+      relationship: 'frequently co-occur in this document'
+    });
+  }
+
+  return {
+    notes: { title: title, sections },
+    flashcards,
+    summary,
+    masterArtifact: {
+      title: 'Document Structure',
+      description: `This document covers ${topWords.slice(0, 3).join(', ')} and related concepts.`,
+      keyRelationships
+    },
+    xpEarned: 100
+  };
+}
+
 async function generateArchiveNotes(content, title, tierInfo) {
   const tier = getTierPrompt(tierInfo);
   const effectiveAgeTier = tierInfo?.ageTier || deriveAgeTierFromFormLevel(tierInfo?.formLevel) || null;
 
-  const prompt = `You are the Archive Alchemist - an AI that transforms documents into intelligent study materials.
+  const prompt = `You are an expert academic assistant. Transform the following document into structured study materials.
 
 DOCUMENT TITLE: ${title}
-${effectiveAgeTier ? `STUDENT AGE TIER: ${effectiveAgeTier}` : 'STUDENT LEVEL: Not specified — analyze document complexity to determine output level'}
+${effectiveAgeTier ? `STUDENT AGE TIER: ${effectiveAgeTier}` : 'STUDENT LEVEL: University / Professional'}
 
 DOCUMENT CONTENT (first 8000 chars):
 ${content.substring(0, 8000)}
 
-STEP 1 — ANALYZE DOCUMENT COMPLEXITY:
-Read the document carefully and determine its academic/professional level:
-- PRIMARY: Simple topics, basic vocabulary, short sentences (e.g., "My School Day", "The Cat")
-- SECONDARY: School subjects, moderate vocabulary (e.g., algebra, history essays)
-- HIGHER_SECONDARY: DSE-level, analytical writing (e.g., calculus, economics, literary analysis)
-- UNIVERSITY/PROFESSIONAL: Academic papers, technical reports, diplomas, degrees (e.g., "Higher Diploma", "Software Engineering", "system architecture", "critical evaluation", "Final Year Project")
+INSTRUCTIONS:
+1. Analyze the document's actual complexity. If it contains academic/professional terms (Higher Diploma, Software Engineering, Final Year Project, system architecture, critical evaluation, testing strategy, prototype), output MUST be at university/professional level.
+2. NEVER output primary-school level content for technical or academic documents.
+3. Generate notes, flashcards, summary, and a master artifact concept map.
+4. Flashcards must test genuine understanding — not trivial facts like "What is the title?"
+5. Use the document's actual terminology and concepts.
+6. Match the tone and vocabulary of the source document.
 
-STEP 2 — MATCH OUTPUT LEVEL:
-Generate study materials at the SAME level as the document. Do NOT dumb down university content. Do NOT use childish language for professional documents.
-
-STEP 3 — OUTPUT FORMAT (valid JSON only):
+OUTPUT (valid JSON only — no markdown code fences):
 {
   "notes": {
-    "title": "Document title for notes",
+    "title": "Descriptive title",
     "sections": [
       {
-        "heading": "Section heading",
-        "body": "Formatted content. Use **bold** for emphasis. Match complexity to document level.",
-        "highlight": "Optional key insight or quote from this section"
+        "heading": "Section heading using document concepts",
+        "body": "Detailed content with **bold** key terms. Use the document's own vocabulary and level.",
+        "highlight": "Key insight or important quote"
       }
     ]
   },
   "flashcards": [
     {
-      "question": "Clear, specific question at document's complexity level",
-      "answer": "Concise answer (1-2 sentences)",
-      "difficulty": "easy|medium|hard"
+      "question": "Question that tests real understanding",
+      "answer": "Concise, accurate answer",
+      "difficulty": "medium|hard"
     }
   ],
-  "summary": "Executive summary at the document's complexity level.",
+  "summary": "Professional executive summary capturing the document's core purpose and key points.",
   "masterArtifact": {
-    "title": "Concept Map / Master Insight title",
-    "description": "A unifying insight that connects all key concepts at the document's level",
+    "title": "Insightful concept map title",
+    "description": "Unifying insight connecting the document's key themes",
     "keyRelationships": [
-      {"from": "Concept A", "to": "Concept B", "relationship": "how they connect"}
+      {"from": "Key Concept A", "to": "Key Concept B", "relationship": "how they relate"}
     ]
   },
   "xpEarned": 150
-}
-
-CRITICAL RULES:
-1. If the document contains words like "Higher Diploma", "Software Engineering", "Final Year Project", "system architecture", "critical evaluation", "testing strategy", "prototype implementation" — the output MUST be university/professional level.
-2. If the document is a children's story or primary school text, use simple language.
-3. NEVER assume primary school level for technical or academic documents.
-4. Flashcards must test REAL understanding of the document, not trivial surface facts.
-5. Generate 3-5 flashcards.
-6. Generate 2-4 note sections.
-7. The master artifact should reveal the "big picture" structure of the document.
-8. Return ONLY valid JSON. No markdown code fences.`;
+}`;
 
   try {
     console.log(`🤖 [generateArchiveNotes] Sending prompt for: ${title}`);
-    const response = await kimi.chat.completions.create({
+
+    // Timeout wrapper: 35 seconds max
+    const aiPromise = kimi.chat.completions.create({
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 4000,
       thinking: { type: 'disabled' }
     });
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('AI generation timed out after 35s')), 35000)
+    );
+    const response = await Promise.race([aiPromise, timeoutPromise]);
 
     let raw = response.choices[0].message.content || '';
     raw = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
 
     const result = JSON.parse(raw);
 
-    // Normalize fields
+    // Validate: if output looks too childish, use smart fallback
+    const sample = JSON.stringify(result).toLowerCase();
+    const isChildish = sample.includes('my school day') || sample.includes('wake up') || sample.includes('cat sat')
+      || sample.includes('little') || sample.includes('mommy') || sample.includes('daddy');
+
+    if (isChildish) {
+      console.warn('⚠️ [generateArchiveNotes] AI output was childish. Using smart fallback.');
+      return buildSmartFallback(content, title);
+    }
+
     return {
       notes: result.notes || { title: title, sections: [] },
       flashcards: Array.isArray(result.flashcards) ? result.flashcards : [],
@@ -2396,21 +2472,8 @@ CRITICAL RULES:
     };
   } catch (error) {
     console.error('❌ [generateArchiveNotes] AI generation failed:', error.message);
-    // Return fallback
-    return {
-      notes: {
-        title: title,
-        sections: [
-          { heading: 'Overview', body: 'The document covers key concepts related to the topic.', highlight: '' }
-        ]
-      },
-      flashcards: [
-        { question: `What is the main topic of "${title}"?`, answer: 'The document explores key concepts and principles related to this subject.', difficulty: 'easy' }
-      ],
-      summary: `This document, titled "${title}", contains important information that can be studied using the generated notes and flashcards.`,
-      masterArtifact: { title: 'Core Insight', description: 'The document reveals fundamental principles worth mastering.', keyRelationships: [] },
-      xpEarned: 150
-    };
+    console.log('📄 [generateArchiveNotes] Using smart fallback for:', title);
+    return buildSmartFallback(content, title);
   }
 }
 

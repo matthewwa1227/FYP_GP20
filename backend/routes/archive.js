@@ -59,52 +59,68 @@ router.use(authenticateToken);
 // HELPER: Generate archive notes in background
 // ============================================
 async function generateArchiveNotesInBackground(sessionId, text, title, userId) {
-  try {
-    // Get user's tier info for age-appropriate content
-    const userRes = await db.query(
-      'SELECT age_tier, form_level FROM students WHERE id = $1',
-      [userId]
-    );
-    const dbTier = userRes.rows[0] || {};
-    const tierInfo = {
-      ageTier: dbTier.age_tier || null,
-      formLevel: dbTier.form_level || null
-    };
+  let lastError = null;
 
-    const result = await kimiService.generateArchiveNotes(text, title, tierInfo);
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      console.log(`🔄 [Archive ${sessionId}] Attempt ${attempt}/2`);
 
-    await db.query(
-      `UPDATE archive_sessions
-       SET generated_notes = $1,
-           flashcards = $2,
-           summary = $3,
-           master_artifact = $4,
-           status = 'completed',
-           xp_earned = $5,
-           updated_at = NOW()
-       WHERE id = $6`,
-      [
-        JSON.stringify(result.notes || {}),
-        JSON.stringify(result.flashcards || []),
-        result.summary || '',
-        JSON.stringify(result.masterArtifact || {}),
-        result.xpEarned || 150,
-        sessionId
-      ]
-    );
+      // Get user's tier info for age-appropriate content
+      const userRes = await db.query(
+        'SELECT age_tier, form_level FROM students WHERE id = $1',
+        [userId]
+      );
+      const dbTier = userRes.rows[0] || {};
+      const tierInfo = {
+        ageTier: dbTier.age_tier || null,
+        formLevel: dbTier.form_level || null
+      };
 
-    console.log(`✅ Archive session ${sessionId} completed`);
-  } catch (error) {
-    console.error(`❌ Archive generation failed for ${sessionId}:`, error);
-    await db.query(
-      `UPDATE archive_sessions
-       SET status = 'failed',
-           error_message = $1,
-           updated_at = NOW()
-       WHERE id = $2`,
-      [error.message || 'Generation failed', sessionId]
-    );
+      const result = await kimiService.generateArchiveNotes(text, title, tierInfo);
+
+      await db.query(
+        `UPDATE archive_sessions
+         SET generated_notes = $1,
+             flashcards = $2,
+             summary = $3,
+             master_artifact = $4,
+             status = 'completed',
+             xp_earned = $5,
+             updated_at = NOW()
+         WHERE id = $6`,
+        [
+          JSON.stringify(result.notes || {}),
+          JSON.stringify(result.flashcards || []),
+          result.summary || '',
+          JSON.stringify(result.masterArtifact || {}),
+          result.xpEarned || 150,
+          sessionId
+        ]
+      );
+
+      console.log(`✅ [Archive ${sessionId}] Completed on attempt ${attempt}`);
+      return;
+
+    } catch (error) {
+      lastError = error;
+      console.error(`❌ [Archive ${sessionId}] Attempt ${attempt} failed:`, error.message);
+      if (attempt < 2) {
+        console.log(`⏳ [Archive ${sessionId}] Retrying in 3 seconds...`);
+        await new Promise(r => setTimeout(r, 3000));
+      }
+    }
   }
+
+  // All attempts failed — mark as failed
+  console.error(`❌ [Archive ${sessionId}] All attempts failed.`);
+  await db.query(
+    `UPDATE archive_sessions
+     SET status = 'failed',
+         error_message = $1,
+         updated_at = NOW()
+     WHERE id = $2`,
+    [lastError?.message || 'Generation failed after 2 attempts', sessionId]
+  );
 }
 
 // ============================================
