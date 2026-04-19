@@ -1677,7 +1677,7 @@ RULES:
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
       temperature: 1,
-      max_tokens: 2500,
+      max_tokens: 1800,
       response_format: { type: 'json_object' }
     });
 
@@ -1717,29 +1717,28 @@ FINAL DELIVERABLE: ${deliverable}${previousInfo}
 
 OUTPUT FORMAT (JSON):
 {
-  "context": "Real-world scenario opening (1-2 sentences).",
-  "focus": "What specific skill this chapter teaches",
-  "keyPoints": ["3-4 bullet points of key concepts"],
-  "fullLesson": "Clear explanation (200-300 words). Include short examples. Connect to project.",
-  "whyItMatters": "How this connects to the final deliverable (1-2 sentences)",
+  "context": "1-sentence real-world scenario",
+  "focus": "Skill name",
+  "keyPoints": ["2-3 bullet points"],
+  "fullLesson": "150-200 word explanation with 1 short example",
+  "whyItMatters": "1 sentence",
   "questions": [
     {
-      "type": "fill_blank|multiple_choice|error_analysis",
+      "type": "multiple_choice",
       "data": { "question": "...", "options": ["A", "B", "C", "D"] },
       "correctAnswer": "...",
-      "explanation": "1-2 sentences",
+      "explanation": "1 sentence",
       "hint": "1 sentence"
     }
   ]
 }
 
 RULES:
-- Be concise. Quality over quantity.
-- Include exactly 2 practice questions
-- Provide 4 options for multiple_choice and error_analysis
-- Questions must be answerable using ONLY the lesson content
-- Connect everything back to the project goal
-- Progressive complexity (Chapter ${chapterNumber} should build on previous)`;
+- Be extremely concise
+- Exactly 1 multiple-choice question with 4 options
+- Answer must be in the lesson
+- Connect to project goal
+- Build on previous chapter if any`;
 
   try {
     console.log(`🤖 [generateChapter] Generating chapter ${chapterNumber} for topic: ${topic}, skill: ${skillName}`);
