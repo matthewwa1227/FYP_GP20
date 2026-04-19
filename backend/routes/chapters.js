@@ -1,6 +1,7 @@
 /**
  * StudyQuest Rebuild - Chapter Routes
  * On-demand single chapter generation with context
+ * Now async: returns immediately, generates in background
  */
 
 const express = require('express');
@@ -9,7 +10,10 @@ const { authenticateToken } = require('../middleware/auth');
 const db = require('../db/connection');
 const kimiService = require('../services/kimiService');
 
-// Generate a single chapter (on-demand)
+// Track in-progress chapter generations per project (in-memory)
+const generatingProjects = new Set();
+
+// Generate a single chapter (async — returns immediately)
 router.post('/generate', authenticateToken, async (req, res) => {
   console.log('🚀 POST /chapters/generate received', req.body);
   const { projectId, userRequest, context } = req.body;
@@ -17,7 +21,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
   console.log('👤 userId:', userId, 'projectId:', projectId, 'userRequest:', userRequest);
 
   try {
-    // Get project and previous chapters for context (read-only, no transaction)
+    // Get project
     const projectResult = await db.query(
       'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
       [projectId, userId]
@@ -29,49 +33,14 @@ router.post('/generate', authenticateToken, async (req, res) => {
 
     const project = projectResult.rows[0];
 
-    // Get previous chapter titles for context
-    const prevChapters = await db.query(
-      `SELECT title, content FROM chapters 
-       WHERE project_id = $1 AND status = 'completed'
-       ORDER BY chapter_number`,
-      [projectId]
-    );
-
-    const previousTitles = prevChapters.rows.map(c => c.title);
-    const lastChapter = prevChapters.rows.length > 0 ? prevChapters.rows[prevChapters.rows.length - 1] : null;
-    const previousContext = lastChapter
-      ? {
-          title: lastChapter.title,
-          keyPoints: lastChapter.content?.keyPoints || []
-        }
-      : null;
-
-    // Determine next chapter number (avoid duplicates)
+    // Determine next chapter number
     const maxChapterRes = await db.query(
       `SELECT COALESCE(MAX(chapter_number), 0) as max_num FROM chapters WHERE project_id = $1`,
       [projectId]
     );
     const nextChapterNumber = parseInt(maxChapterRes.rows[0].max_num) + 1;
 
-    // Generate chapter content via AI (outside transaction)
-    const chapterContent = await kimiService.generateChapter({
-      topic: project.title,
-      chapterNumber: nextChapterNumber,
-      skillName: userRequest || `Chapter ${nextChapterNumber}`,
-      projectContext: project.description,
-      deliverable: project.deliverable,
-      previousContext
-    });
-
-    // Build content JSONB (questions are now generated in the same AI call as the chapter)
-    const content = {
-      keyPoints: chapterContent.keyPoints,
-      fullLesson: chapterContent.fullLesson,
-      whyItMatters: chapterContent.whyItMatters,
-      questions: chapterContent.questions || []
-    };
-
-    // Check if chapter already exists (idempotent for retries)
+    // Check if chapter already exists
     const existingChapter = await db.query(
       `SELECT * FROM chapters WHERE project_id = $1 AND chapter_number = $2`,
       [projectId, nextChapterNumber]
@@ -92,7 +61,59 @@ router.post('/generate', authenticateToken, async (req, res) => {
       });
     }
 
-    // Short transaction for INSERT + UPDATE only
+    // Check if generation is already in progress
+    if (generatingProjects.has(projectId)) {
+      console.log('⏳ Chapter generation already in progress for project:', projectId);
+      return res.json({ success: true, status: 'generating' });
+    }
+
+    // Mark as generating and return immediately
+    generatingProjects.add(projectId);
+    res.json({ success: true, status: 'generating' });
+
+    // Generate in background (fire-and-forget)
+    generateChapterInBackground(projectId, userId, project, nextChapterNumber, userRequest);
+
+  } catch (error) {
+    console.error('❌ Error generating chapter:', error);
+    res.status(500).json({ error: 'Failed to generate chapter' });
+  }
+});
+
+async function generateChapterInBackground(projectId, userId, project, nextChapterNumber, userRequest) {
+  try {
+    // Get previous chapters for context
+    const prevChapters = await db.query(
+      `SELECT title, content FROM chapters 
+       WHERE project_id = $1 AND status = 'completed'
+       ORDER BY chapter_number`,
+      [projectId]
+    );
+
+    const previousTitles = prevChapters.rows.map(c => c.title);
+    const lastChapter = prevChapters.rows.length > 0 ? prevChapters.rows[prevChapters.rows.length - 1] : null;
+    const previousContext = lastChapter
+      ? { title: lastChapter.title, keyPoints: lastChapter.content?.keyPoints || [] }
+      : null;
+
+    // Generate chapter content via AI
+    const chapterContent = await kimiService.generateChapter({
+      topic: project.title,
+      chapterNumber: nextChapterNumber,
+      skillName: userRequest || `Chapter ${nextChapterNumber}`,
+      projectContext: project.description,
+      deliverable: project.deliverable,
+      previousContext
+    });
+
+    const content = {
+      keyPoints: chapterContent.keyPoints,
+      fullLesson: chapterContent.fullLesson,
+      whyItMatters: chapterContent.whyItMatters,
+      questions: chapterContent.questions || []
+    };
+
+    // Insert chapter
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -119,31 +140,19 @@ router.post('/generate', authenticateToken, async (req, res) => {
       );
 
       await client.query('COMMIT');
-      console.log('✅ Chapter generated successfully:', chapterResult.rows[0].id);
-
-      const row = chapterResult.rows[0];
-      res.json({
-        success: true,
-        chapter: {
-          ...row,
-          full_lesson: row.content?.fullLesson,
-          key_points: row.content?.keyPoints,
-          why_it_matters: row.content?.whyItMatters,
-          questions: row.content?.questions
-        }
-      });
+      console.log('✅ Background chapter generated:', chapterResult.rows[0].id);
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
-      throw error;
+      console.error('❌ Background chapter insert failed:', error);
     } finally {
       client.release();
     }
-
   } catch (error) {
-    console.error('❌ Error generating chapter:', error);
-    res.status(500).json({ error: 'Failed to generate chapter' });
+    console.error('❌ Background chapter generation failed:', error);
+  } finally {
+    generatingProjects.delete(projectId);
   }
-});
+}
 
 // List chapters for a project
 router.get('/', authenticateToken, async (req, res) => {
