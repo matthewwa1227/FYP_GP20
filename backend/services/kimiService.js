@@ -1681,7 +1681,6 @@ RULES:
       const response = await kimi.chat.completions.create({
         model: 'kimi-k2.5',
         messages: [{ role: 'user', content: prompt }],
-        temperature: 1,
         max_tokens: 3000,
         thinking: { type: 'disabled' }
       });
@@ -1773,7 +1772,6 @@ RULES:
       const response = await kimi.chat.completions.create({
         model: 'kimi-k2.5',
         messages: [{ role: 'user', content: prompt }],
-        temperature: 1,
         max_tokens: 3000,
         thinking: { type: 'disabled' }
       });
@@ -1872,7 +1870,6 @@ RULES:
     const response = await kimi.chat.completions.create({
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 1,
       max_tokens: 3000,
       thinking: { type: 'disabled' }
     });
@@ -1925,7 +1922,6 @@ TONE:
     const response = await kimi.chat.completions.create({
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 1,
       max_tokens: 2000,
       thinking: { type: 'disabled' }
     });
@@ -1971,7 +1967,6 @@ STYLE:
     const response = await kimi.chat.completions.create({
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 1,
       max_tokens: 1500,
       thinking: { type: 'disabled' }
     });
@@ -2055,7 +2050,6 @@ CRITICAL RULES:
     const response = await kimi.chat.completions.create({
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 1,
       max_tokens: 4000,
       thinking: { type: 'disabled' }
     });
@@ -2176,7 +2170,6 @@ VALIDATION RULES:
     const response = await kimi.chat.completions.create({
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 1,
       max_tokens: 3000,
       thinking: { type: 'disabled' }
     });
