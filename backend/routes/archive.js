@@ -7,10 +7,17 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const { authenticateToken } = require('../middleware/auth');
 const db = require('../db/connection');
 const contentService = require('../services/contentService');
 const kimiService = require('../services/kimiService');
+
+// Ensure uploads directory exists (Render ephemeral filesystem)
+const uploadsDir = path.join(process.cwd(), 'uploads', 'documents');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
