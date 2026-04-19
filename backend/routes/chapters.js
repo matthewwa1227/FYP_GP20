@@ -71,6 +71,27 @@ router.post('/generate', authenticateToken, async (req, res) => {
       questions: chapterContent.questions || []
     };
 
+    // Check if chapter already exists (idempotent for retries)
+    const existingChapter = await db.query(
+      `SELECT * FROM chapters WHERE project_id = $1 AND chapter_number = $2`,
+      [projectId, nextChapterNumber]
+    );
+
+    if (existingChapter.rows.length > 0) {
+      console.log('📖 Chapter already exists, returning:', existingChapter.rows[0].id);
+      const row = existingChapter.rows[0];
+      return res.json({
+        success: true,
+        chapter: {
+          ...row,
+          full_lesson: row.content?.fullLesson,
+          key_points: row.content?.keyPoints,
+          why_it_matters: row.content?.whyItMatters,
+          questions: row.content?.questions
+        }
+      });
+    }
+
     // Short transaction for INSERT + UPDATE only
     const client = await db.getClient();
     try {
