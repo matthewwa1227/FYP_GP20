@@ -2312,42 +2312,49 @@ VALIDATION RULES:
  */
 async function generateArchiveNotes(content, title, tierInfo) {
   const tier = getTierPrompt(tierInfo);
-  const effectiveAgeTier = tierInfo?.ageTier || deriveAgeTierFromFormLevel(tierInfo?.formLevel) || 'P4-P6';
+  const effectiveAgeTier = tierInfo?.ageTier || deriveAgeTierFromFormLevel(tierInfo?.formLevel) || null;
 
-  const prompt = `You are the Archive Alchemist - an AI that transforms documents into magical study materials.
+  const prompt = `You are the Archive Alchemist - an AI that transforms documents into intelligent study materials.
 
 DOCUMENT TITLE: ${title}
-STUDENT AGE TIER: ${effectiveAgeTier}
-LANGUAGE RULE: ${tier.language}
+${effectiveAgeTier ? `STUDENT AGE TIER: ${effectiveAgeTier}` : 'STUDENT LEVEL: Not specified — analyze document complexity to determine output level'}
 
 DOCUMENT CONTENT (first 8000 chars):
 ${content.substring(0, 8000)}
 
-Transmute this document into the following JSON structure. Keep content concise but comprehensive.
+STEP 1 — ANALYZE DOCUMENT COMPLEXITY:
+Read the document carefully and determine its academic/professional level:
+- PRIMARY: Simple topics, basic vocabulary, short sentences (e.g., "My School Day", "The Cat")
+- SECONDARY: School subjects, moderate vocabulary (e.g., algebra, history essays)
+- HIGHER_SECONDARY: DSE-level, analytical writing (e.g., calculus, economics, literary analysis)
+- UNIVERSITY/PROFESSIONAL: Academic papers, technical reports, diplomas, degrees (e.g., "Higher Diploma", "Software Engineering", "system architecture", "critical evaluation", "Final Year Project")
 
-OUTPUT FORMAT (valid JSON only):
+STEP 2 — MATCH OUTPUT LEVEL:
+Generate study materials at the SAME level as the document. Do NOT dumb down university content. Do NOT use childish language for professional documents.
+
+STEP 3 — OUTPUT FORMAT (valid JSON only):
 {
   "notes": {
     "title": "Document title for notes",
     "sections": [
       {
         "heading": "Section heading",
-        "body": "Formatted markdown-style content. Use plain text with **bold** for emphasis. Keep paragraphs short (2-4 sentences).",
+        "body": "Formatted content. Use **bold** for emphasis. Match complexity to document level.",
         "highlight": "Optional key insight or quote from this section"
       }
     ]
   },
   "flashcards": [
     {
-      "question": "Clear, specific question",
+      "question": "Clear, specific question at document's complexity level",
       "answer": "Concise answer (1-2 sentences)",
       "difficulty": "easy|medium|hard"
     }
   ],
-  "summary": "A 3-5 sentence executive summary of the entire document.",
+  "summary": "Executive summary at the document's complexity level.",
   "masterArtifact": {
     "title": "Concept Map / Master Insight title",
-    "description": "A unifying insight that connects all key concepts",
+    "description": "A unifying insight that connects all key concepts at the document's level",
     "keyRelationships": [
       {"from": "Concept A", "to": "Concept B", "relationship": "how they connect"}
     ]
@@ -2355,16 +2362,15 @@ OUTPUT FORMAT (valid JSON only):
   "xpEarned": 150
 }
 
-RULES:
-1. Language must match the student's age tier: ${tier.language}
-2. For P1-P3: Use very simple words, short sentences, everyday examples.
-3. For P4-P6: Use clear simple English with everyday comparisons.
-4. For S1-S3: Use normal school English.
-5. For S4-S6: Use proper academic English suitable for DSE.
-6. Generate 3-5 flashcards.
-7. Generate 2-4 note sections.
-8. The master artifact should reveal a "big picture" insight.
-9. Return ONLY valid JSON. No markdown code fences.`;
+CRITICAL RULES:
+1. If the document contains words like "Higher Diploma", "Software Engineering", "Final Year Project", "system architecture", "critical evaluation", "testing strategy", "prototype implementation" — the output MUST be university/professional level.
+2. If the document is a children's story or primary school text, use simple language.
+3. NEVER assume primary school level for technical or academic documents.
+4. Flashcards must test REAL understanding of the document, not trivial surface facts.
+5. Generate 3-5 flashcards.
+6. Generate 2-4 note sections.
+7. The master artifact should reveal the "big picture" structure of the document.
+8. Return ONLY valid JSON. No markdown code fences.`;
 
   try {
     console.log(`🤖 [generateArchiveNotes] Sending prompt for: ${title}`);
