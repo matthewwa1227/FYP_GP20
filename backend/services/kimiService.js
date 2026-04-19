@@ -1683,6 +1683,7 @@ RULES:
         messages: [{ role: 'user', content: prompt }],
         temperature: 1,
         max_tokens: 1800,
+        timeout: 30000,
         response_format: { type: 'json_object' }
       });
 
@@ -1690,7 +1691,7 @@ RULES:
       logger.info('✅ Project scope generated:', result.title);
       return result;
     } catch (error) {
-      const isRetryable = error.status === 429 || error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT';
+      const isRetryable = error.status === 429 || error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'AbortError';
       console.error(`❌ [generateProjectScope] Attempt ${attempt} failed:`, error.message, isRetryable ? '(retryable)' : '');
       if (!isRetryable || attempt === 3) break;
       await new Promise(r => setTimeout(r, attempt * 2000));
@@ -1763,6 +1764,7 @@ RULES:
         messages: [{ role: 'user', content: prompt }],
         temperature: 1,
         max_tokens: 1800,
+        timeout: 30000,
         response_format: { type: 'json_object' }
       });
 
@@ -1770,7 +1772,7 @@ RULES:
       console.log(`✅ [generateChapter] Generated: ${result.focus || safeSkillName}, keyPoints: ${result.keyPoints?.length || 0}`);
       return result;
     } catch (error) {
-      const isRetryable = error.status === 429 || error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT';
+      const isRetryable = error.status === 429 || error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'AbortError';
       console.error(`❌ [generateChapter] Attempt ${attempt} failed:`, error.message, isRetryable ? '(retryable)' : '');
       if (!isRetryable || attempt === 3) {
         console.error('❌ [generateChapter] All retries exhausted, returning fallback');
@@ -1781,13 +1783,28 @@ RULES:
     }
   }
 
-  // Fallback data
+  // Build age-appropriate fallback content
+  const isPrimary = tierInfo?.ageTier?.startsWith('P');
+  const fbKeyPoints = isPrimary
+    ? [`What ${safeSkillName} means`, `Fun facts about ${safeSkillName}`, `Try ${safeSkillName} yourself`]
+    : [`Understanding ${safeSkillName}`, `Why ${safeSkillName} is useful`, `How to apply ${safeSkillName}`];
+  const fbLesson = isPrimary
+    ? `Welcome to ${safeSkillName}! In this chapter, we learn the basics using fun examples. We keep things simple and easy to understand. By the end, you will know the most important ideas.`
+    : `This chapter introduces ${safeSkillName}. We cover the fundamental concepts, work through practical examples, and connect the material to real-world applications. By the end, you will have a solid foundation.`;
+
   return {
-    context: `Let's learn about ${safeSkillName} together!`,
+    context: `Welcome to ${safeSkillName}!`,
     focus: safeSkillName,
-    keyPoints: [`What is ${safeSkillName}?`, `Why ${safeSkillName} matters`, `How to use ${safeSkillName}`],
-    fullLesson: `In this chapter, we explore ${safeSkillName}. We start with the basics and build up step by step. By the end, you'll understand the core ideas and be ready to use them in your project.`,
-    whyItMatters: `Learning ${safeSkillName} helps you complete your project and grow your skills.`
+    keyPoints: fbKeyPoints,
+    fullLesson: fbLesson,
+    whyItMatters: `Learning ${safeSkillName} helps you grow and complete your project.`,
+    questions: [{
+      type: 'multiple_choice',
+      data: { question: `What is the main topic of this chapter?`, options: [`A) ${safeSkillName}`, 'B) Sleeping', 'C) Eating candy', 'D) Watching TV'] },
+      correctAnswer: `A) ${safeSkillName}`,
+      explanation: `This chapter teaches ${safeSkillName}.`,
+      hint: `Read the chapter title.`
+    }]
   };
 }
 
