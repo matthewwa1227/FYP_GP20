@@ -47,6 +47,18 @@ router.post('/', authenticateToken, async (req, res) => {
       );
 
       const project = projectResult.rows[0];
+
+      // Abandon any other active projects for this user so only the newest is active
+      const abandonedResult = await client.query(
+        `UPDATE projects SET status = 'abandoned', updated_at = NOW()
+         WHERE user_id = $1 AND status = 'active' AND id != $2
+         RETURNING id`,
+        [userId, project.id]
+      );
+      if (abandonedResult.rows.length > 0) {
+        console.log(`🗑️  Abandoned ${abandonedResult.rows.length} old project(s):`, abandonedResult.rows.map(r => r.id));
+      }
+
       await client.query('COMMIT');
 
       console.log('✅ Project created:', project.id);
