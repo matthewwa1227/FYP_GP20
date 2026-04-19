@@ -213,10 +213,14 @@ const withTransaction = async (callback, options = {}) => {
 const getClient = async () => {
   const client = await pool.connect();
   
-  // Set statement timeout for this client
-  await client.query(`SET statement_timeout = ${POOL_CONFIG.statementTimeout}`);
-  
-  return client;
+  try {
+    // Set statement timeout for this client
+    await client.query(`SET statement_timeout = ${POOL_CONFIG.statementTimeout}`);
+    return client;
+  } catch (err) {
+    client.release();
+    throw err;
+  }
 };
 
 // ============================================

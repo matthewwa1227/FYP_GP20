@@ -70,66 +70,57 @@ router.post('/start', authenticateToken, async (req, res) => {
 
   console.log(`🎮 Starting Newquest boss battle for project ${projectId}, user ${userId}`);
 
-  const client = await db.getClient();
   try {
-    await client.query('BEGIN');
-
-    // Verify project exists and belongs to user
-    const projectResult = await client.query(
+    // Step 1: Fetch all data first (no transaction needed for reads)
+    const projectResult = await db.query(
       'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
       [projectId, userId]
     );
 
     if (projectResult.rows.length === 0) {
-      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, error: 'Project not found' });
     }
 
     const project = projectResult.rows[0];
 
-    // Get all completed artifacts for this project
-    const artifactsResult = await client.query(
-      `SELECT id, title, content as summary, tags FROM knowledge_artifacts 
-       WHERE project_id = $1 AND user_id = $2
-       ORDER BY created_at`,
-      [projectId, userId]
-    );
-
-    // Get completed chapters for this project
-    const chaptersResult = await client.query(
-      `SELECT id, chapter_number, title FROM chapters 
-       WHERE project_id = $1 AND status = 'completed'
-       ORDER BY chapter_number`,
-      [projectId]
-    );
+    // Parallel fetch of artifacts, chapters, and existing battle
+    const [artifactsResult, chaptersResult, existingResult] = await Promise.all([
+      db.query(
+        `SELECT id, title, content as summary, tags FROM knowledge_artifacts 
+         WHERE project_id = $1 AND user_id = $2
+         ORDER BY created_at`,
+        [projectId, userId]
+      ),
+      db.query(
+        `SELECT id, chapter_number, title FROM chapters 
+         WHERE project_id = $1 AND status = 'completed'
+         ORDER BY chapter_number`,
+        [projectId]
+      ),
+      db.query(
+        `SELECT * FROM boss_battles 
+         WHERE project_id = $1 AND user_id = $2 AND status = 'in_progress'`,
+        [projectId, userId]
+      )
+    ]);
 
     if (artifactsResult.rows.length === 0 && chaptersResult.rows.length === 0) {
-      await client.query('ROLLBACK');
       return res.status(400).json({ 
         success: false, 
         error: 'Complete at least one chapter before starting the boss battle' 
       });
     }
 
-    // Check for existing active battle
-    const existingResult = await client.query(
-      `SELECT * FROM boss_battles 
-       WHERE project_id = $1 AND user_id = $2 AND status = 'in_progress'`,
-      [projectId, userId]
-    );
-
     if (existingResult.rows.length > 0) {
-      const existing = existingResult.rows[0];
-      await client.query('COMMIT');
       return res.json({
         success: true,
-        bossBattle: existing,
+        bossBattle: existingResult.rows[0],
         message: 'Resuming existing boss battle',
         resumed: true
       });
     }
 
-    // Generate boss battle via AI
+    // Step 2: Generate boss battle via AI (NO DB client held during external API call)
     const battle = await kimiService.generateBossBattle({
       topic: project.title,
       deliverable: project.deliverable,
@@ -180,40 +171,47 @@ router.post('/start', authenticateToken, async (req, res) => {
       }
     }));
 
-    // Create boss battle record
-    const battleResult = await client.query(
-      `INSERT INTO boss_battles (
-        project_id, user_id, title, description, scenario,
-        deliverable, stages, current_stage, total_stages, status,
-        badge_earned, metadata, stage_solutions, started_at, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
-      RETURNING *`,
-      [
-        projectId, userId, battle.title, battle.description,
-        battle.scenario, battle.deliverable,
-        JSON.stringify(enrichedStages), 1, enrichedStages.length, 'in_progress',
-        `${project.title} Master`,
-        JSON.stringify(metadata),
-        JSON.stringify([])
-      ]
-    );
+    // Step 3: Insert boss battle record using a short transaction
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
 
-    await client.query('COMMIT');
+      const battleResult = await client.query(
+        `INSERT INTO boss_battles (
+          project_id, user_id, title, description, scenario,
+          deliverable, stages, current_stage, total_stages, status,
+          badge_earned, metadata, stage_solutions, started_at, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
+        RETURNING *`,
+        [
+          projectId, userId, battle.title, battle.description,
+          battle.scenario, battle.deliverable,
+          JSON.stringify(enrichedStages), 1, enrichedStages.length, 'in_progress',
+          `${project.title} Master`,
+          JSON.stringify(metadata),
+          JSON.stringify([])
+        ]
+      );
 
-    res.json({
-      success: true,
-      bossBattle: battleResult.rows[0],
-      stages: enrichedStages,
-      metadata,
-      message: 'Boss battle initiated!'
-    });
+      await client.query('COMMIT');
+
+      res.json({
+        success: true,
+        bossBattle: battleResult.rows[0],
+        stages: enrichedStages,
+        metadata,
+        message: 'Boss battle initiated!'
+      });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
 
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('❌ Error starting boss battle:', error);
     res.status(500).json({ success: false, error: 'Failed to start boss battle' });
-  } finally {
-    client.release();
   }
 });
 
@@ -312,17 +310,14 @@ router.post('/:id/stage', authenticateToken, async (req, res) => {
     return res.status(400).json({ success: false, error: 'Solution is required' });
   }
 
-  const client = await db.getClient();
   try {
-    await client.query('BEGIN');
-
-    const battleResult = await client.query(
+    // Step 1: Read battle state and artifacts (no transaction needed)
+    const battleResult = await db.query(
       'SELECT * FROM boss_battles WHERE id = $1 AND user_id = $2',
       [id, userId]
     );
 
     if (battleResult.rows.length === 0) {
-      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, error: 'Boss battle not found' });
     }
 
@@ -341,22 +336,27 @@ router.post('/:id/stage', authenticateToken, async (req, res) => {
 
     const currentStage = stages[targetStageIndex];
     if (!currentStage) {
-      await client.query('ROLLBACK');
       return res.status(400).json({ success: false, error: 'Invalid stage' });
     }
 
     // Get relevant artifacts by title
     const artifactTitles = currentStage.relevantArtifacts || [];
-    const artifactsResult = await client.query(
-      `SELECT * FROM knowledge_artifacts 
-       WHERE project_id = $1 AND title = ANY($2)`,
-      [battle.project_id, artifactTitles]
-    );
+    const [artifactsResult, hotfixesResult] = await Promise.all([
+      db.query(
+        `SELECT * FROM knowledge_artifacts 
+         WHERE project_id = $1 AND title = ANY($2)`,
+        [battle.project_id, artifactTitles]
+      ),
+      db.query(
+        `SELECT COUNT(*) as count FROM boss_battle_hotfixes WHERE boss_battle_id = $1`,
+        [id]
+      )
+    ]);
 
     // Get previous stage solution for propagation check
     const previousSolution = targetStageIndex > 0 ? stageSolutions[targetStageIndex - 1] : null;
 
-    // Validate solution via AI
+    // Step 2: Validate solution via AI (NO DB client held during external API call)
     const validation = await kimiService.validateBossStage({
       stage: currentStage,
       userSolution: solution,
@@ -387,95 +387,28 @@ router.post('/:id/stage', authenticateToken, async (req, res) => {
       mode
     };
 
+    // Pre-compute values needed for victory
+    let masterArtifact = null;
+    let badgeTier = null;
     if (validation.passed) {
-      // Check if we're in hotfix mode
-      if (mode === 'hotfix' && battle.failed_stage !== null) {
-        // Record the hotfix
-        await client.query(
-          `INSERT INTO boss_battle_hotfixes 
-           (boss_battle_id, user_id, stage_number, original_solution, fixed_solution, validation_result, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-          [id, userId, targetStageIndex + 1, 
-           JSON.stringify(previousSolution?.solution || {}), 
-           solution, 
-           JSON.stringify(validation)]
-        );
+      const nextStage = targetStageIndex + 2;
+      
+      if (nextStage > stages.length) {
+        // Battle complete! Determine badge tier
+        const hotfixesCount = parseInt(hotfixesResult.rows[0].count) || 0;
+        badgeTier = determineBadgeTier(metadata.usedDownshifts || 0, hotfixesCount);
 
-        // Clear failed_stage and continue to current stage
-        await client.query(
-          `UPDATE boss_battles 
-           SET failed_stage = NULL,
-               ai_diagnosis = NULL,
-               stages = $1,
-               stage_solutions = $2
-           WHERE id = $3`,
-          [JSON.stringify(stages), JSON.stringify(stageSolutions), id]
-        );
+        // Generate master artifact (NO DB client held)
+        masterArtifact = await kimiService.generateKnowledgeArtifact({
+          topic: battle.title,
+          chapterTitle: 'Boss Battle Synthesis',
+          focusArea: battle.deliverable,
+          keyPoints: stages.map(s => s.title),
+          fullLesson: JSON.stringify(stageSolutions)
+        });
 
-        response.status = 'hotfix-resolved';
-        response.message = 'Hotfix successful! The upstream issue is resolved. You may now continue.';
-        response.canContinue = true;
-      } else {
-        // Normal progression
-        const nextStage = targetStageIndex + 2;
-        
-        if (nextStage > stages.length) {
-          // Battle complete! Determine badge tier
-          const hotfixesCount = (await client.query(
-            `SELECT COUNT(*) as count FROM boss_battle_hotfixes WHERE boss_battle_id = $1`,
-            [id]
-          )).rows[0].count;
-
-          const badgeTier = determineBadgeTier(metadata.usedDownshifts || 0, parseInt(hotfixesCount) || 0);
-
-          // Generate master artifact
-          const masterArtifact = await kimiService.generateKnowledgeArtifact({
-            topic: battle.title,
-            chapterTitle: 'Boss Battle Synthesis',
-            focusArea: battle.deliverable,
-            keyPoints: stages.map(s => s.title),
-            fullLesson: JSON.stringify(stageSolutions)
-          });
-
-          metadata.completedAt = new Date().toISOString();
-          metadata.badgeTier = badgeTier;
-
-          await client.query(
-            `UPDATE boss_battles 
-             SET status = 'completed', 
-                 current_stage = $1,
-                 badge_earned = $2,
-                 badge_tier = $3,
-                 master_artifact = $4,
-                 metadata = $5,
-                 stages = $6,
-                 stage_solutions = $7,
-                 completed_at = NOW()
-             WHERE id = $8`,
-            [nextStage - 1, `${battle.title} Master`, badgeTier, JSON.stringify(masterArtifact), 
-             JSON.stringify(metadata), JSON.stringify(stages), 
-             JSON.stringify(stageSolutions), id]
-          );
-          
-          response.status = 'victory';
-          response.badge = badgeTier;
-          response.message = `Congratulations! You've earned the ${badgeTier} badge!`;
-          response.masterArtifact = masterArtifact;
-        } else {
-          // Progress to next stage
-          await client.query(
-            `UPDATE boss_battles 
-             SET current_stage = $1,
-                 stages = $2,
-                 stage_solutions = $3
-             WHERE id = $4`,
-            [nextStage, JSON.stringify(stages), JSON.stringify(stageSolutions), id]
-          );
-          
-          response.status = 'progress';
-          response.nextStage = nextStage;
-          response.message = `Stage ${targetStageIndex + 1} complete! Proceed to Stage ${nextStage}.`;
-        }
+        metadata.completedAt = new Date().toISOString();
+        metadata.badgeTier = badgeTier;
       }
     } else {
       // Failed - provide diagnosis
@@ -501,17 +434,6 @@ router.post('/:id/stage', authenticateToken, async (req, res) => {
       stages[targetStageIndex].uiState.leftPanel = targetStageIndex > 0 ? 'stage-n-minus-1' : null;
       stages[targetStageIndex].uiState.rightPanel = 'stage-n-preview';
 
-      await client.query(
-        `UPDATE boss_battles 
-         SET failed_stage = $1,
-             ai_diagnosis = $2,
-             stages = $3,
-             stage_solutions = $4
-         WHERE id = $5`,
-        [targetStageIndex + 1, validation.diagnosis, 
-         JSON.stringify(stages), JSON.stringify(stageSolutions), id]
-      );
-      
       response.status = 'retry';
       response.diagnosis = validation.diagnosis;
       response.highlightedArtifacts = validation.highlightedArtifacts || [];
@@ -529,15 +451,107 @@ router.post('/:id/stage', authenticateToken, async (req, res) => {
       }
     }
 
-    await client.query('COMMIT');
-    res.json(response);
+    // Step 3: Apply all DB changes in a short transaction
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      if (validation.passed) {
+        // Check if we're in hotfix mode
+        if (mode === 'hotfix' && battle.failed_stage !== null) {
+          // Record the hotfix
+          await client.query(
+            `INSERT INTO boss_battle_hotfixes 
+             (boss_battle_id, user_id, stage_number, original_solution, fixed_solution, validation_result, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+            [id, userId, targetStageIndex + 1, 
+             JSON.stringify(previousSolution?.solution || {}), 
+             solution, 
+             JSON.stringify(validation)]
+          );
+
+          // Clear failed_stage and continue to current stage
+          await client.query(
+            `UPDATE boss_battles 
+             SET failed_stage = NULL,
+                 ai_diagnosis = NULL,
+                 stages = $1,
+                 stage_solutions = $2
+             WHERE id = $3`,
+            [JSON.stringify(stages), JSON.stringify(stageSolutions), id]
+          );
+
+          response.status = 'hotfix-resolved';
+          response.message = 'Hotfix successful! The upstream issue is resolved. You may now continue.';
+          response.canContinue = true;
+        } else {
+          // Normal progression
+          const nextStage = targetStageIndex + 2;
+          
+          if (nextStage > stages.length) {
+            await client.query(
+              `UPDATE boss_battles 
+               SET status = 'completed', 
+                   current_stage = $1,
+                   badge_earned = $2,
+                   badge_tier = $3,
+                   master_artifact = $4,
+                   metadata = $5,
+                   stages = $6,
+                   stage_solutions = $7,
+                   completed_at = NOW()
+               WHERE id = $8`,
+              [nextStage - 1, `${battle.title} Master`, badgeTier, JSON.stringify(masterArtifact), 
+               JSON.stringify(metadata), JSON.stringify(stages), 
+               JSON.stringify(stageSolutions), id]
+            );
+            
+            response.status = 'victory';
+            response.badge = badgeTier;
+            response.message = `Congratulations! You've earned the ${badgeTier} badge!`;
+            response.masterArtifact = masterArtifact;
+          } else {
+            // Progress to next stage
+            await client.query(
+              `UPDATE boss_battles 
+               SET current_stage = $1,
+                   stages = $2,
+                   stage_solutions = $3
+               WHERE id = $4`,
+              [nextStage, JSON.stringify(stages), JSON.stringify(stageSolutions), id]
+            );
+            
+            response.status = 'progress';
+            response.nextStage = nextStage;
+            response.message = `Stage ${targetStageIndex + 1} complete! Proceed to Stage ${nextStage}.`;
+          }
+        }
+      } else {
+        await client.query(
+          `UPDATE boss_battles 
+           SET failed_stage = $1,
+               ai_diagnosis = $2,
+               stages = $3,
+               stage_solutions = $4
+           WHERE id = $5`,
+          [targetStageIndex + 1, validation.diagnosis, 
+           JSON.stringify(stages), JSON.stringify(stageSolutions), id]
+        );
+      }
+
+      await client.query('COMMIT');
+      res.json(response);
+
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
 
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('❌ Error submitting stage:', error);
     res.status(500).json({ success: false, error: 'Failed to submit stage solution' });
-  } finally {
-    client.release();
   }
 });
 

@@ -16,25 +16,21 @@ router.post('/generate', authenticateToken, async (req, res) => {
   const userId = req.user.id;
   console.log('👤 userId:', userId);
 
-  const client = await db.getClient();
   try {
-    await client.query('BEGIN');
-
-    // Get project and previous chapters for context
-    const projectResult = await client.query(
+    // Get project and previous chapters for context (read-only, no transaction)
+    const projectResult = await db.query(
       'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
       [projectId, userId]
     );
 
     if (projectResult.rows.length === 0) {
-      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Project not found' });
     }
 
     const project = projectResult.rows[0];
 
     // Get previous chapter titles for context
-    const prevChapters = await client.query(
+    const prevChapters = await db.query(
       `SELECT title, content FROM chapters 
        WHERE project_id = $1 AND status = 'completed'
        ORDER BY chapter_number`,
@@ -51,13 +47,13 @@ router.post('/generate', authenticateToken, async (req, res) => {
       : null;
 
     // Determine next chapter number (avoid duplicates)
-    const maxChapterRes = await client.query(
+    const maxChapterRes = await db.query(
       `SELECT COALESCE(MAX(chapter_number), 0) as max_num FROM chapters WHERE project_id = $1`,
       [projectId]
     );
     const nextChapterNumber = parseInt(maxChapterRes.rows[0].max_num) + 1;
 
-    // Generate chapter content via AI
+    // Generate chapter content via AI (outside transaction)
     const chapterContent = await kimiService.generateChapter({
       topic: project.title,
       chapterNumber: nextChapterNumber,
@@ -67,7 +63,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
       previousContext
     });
 
-    // Generate questions
+    // Generate questions (outside transaction)
     const questions = await kimiService.generateQuestions({
       topic: project.title,
       chapterTitle: userRequest || `Chapter ${nextChapterNumber}`,
@@ -83,50 +79,56 @@ router.post('/generate', authenticateToken, async (req, res) => {
       questions: questions
     };
 
-    // Insert chapter
-    const chapterResult = await client.query(
-      `INSERT INTO chapters (
-        project_id, chapter_number, title, 
-        focus_area, context, content, status, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-      RETURNING *`,
-      [
-        projectId, nextChapterNumber,
-        userRequest || `Chapter ${nextChapterNumber}`,
-        chapterContent.focus || userRequest || `Chapter ${previousTitles.length + 1}`,
-        chapterContent.context || project.description,
-        JSON.stringify(content),
-        'available'
-      ]
-    );
+    // Short transaction for INSERT + UPDATE only
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
 
-    // Update project's current chapter
-    await client.query(
-      'UPDATE projects SET current_chapter = $1 WHERE id = $2',
-      [chapterResult.rows[0].chapter_number, projectId]
-    );
+      const chapterResult = await client.query(
+        `INSERT INTO chapters (
+          project_id, chapter_number, title, 
+          focus_area, context, content, status, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        RETURNING *`,
+        [
+          projectId, nextChapterNumber,
+          userRequest || `Chapter ${nextChapterNumber}`,
+          chapterContent.focus || userRequest || `Chapter ${previousTitles.length + 1}`,
+          chapterContent.context || project.description,
+          JSON.stringify(content),
+          'available'
+        ]
+      );
 
-    await client.query('COMMIT');
-    console.log('✅ Chapter generated successfully:', chapterResult.rows[0].id);
+      await client.query(
+        'UPDATE projects SET current_chapter = $1 WHERE id = $2',
+        [chapterResult.rows[0].chapter_number, projectId]
+      );
 
-    const row = chapterResult.rows[0];
-    res.json({
-      success: true,
-      chapter: {
-        ...row,
-        full_lesson: row.content?.fullLesson,
-        key_points: row.content?.keyPoints,
-        why_it_matters: row.content?.whyItMatters,
-        questions: row.content?.questions
-      }
-    });
+      await client.query('COMMIT');
+      console.log('✅ Chapter generated successfully:', chapterResult.rows[0].id);
+
+      const row = chapterResult.rows[0];
+      res.json({
+        success: true,
+        chapter: {
+          ...row,
+          full_lesson: row.content?.fullLesson,
+          key_points: row.content?.keyPoints,
+          why_it_matters: row.content?.whyItMatters,
+          questions: row.content?.questions
+        }
+      });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
 
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('❌ Error generating chapter:', error);
     res.status(500).json({ error: 'Failed to generate chapter' });
-  } finally {
-    client.release();
   }
 });
 
@@ -230,12 +232,9 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const userId = req.user.id;
 
-  const client = await db.getClient();
   try {
-    await client.query('BEGIN');
-
     // Get chapter (verify ownership via project join)
-    const chapterResult = await client.query(
+    const chapterResult = await db.query(
       `SELECT c.*,
         c.content->>'fullLesson' as full_lesson,
         c.content->'keyPoints' as key_points
@@ -246,21 +245,34 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
     );
 
     if (chapterResult.rows.length === 0) {
-      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Chapter not found' });
     }
 
     const chapter = chapterResult.rows[0];
 
-    // Mark chapter as completed
-    await client.query(
+    // Mark chapter as completed (autocommit so row lock is released immediately)
+    await db.query(
       `UPDATE chapters 
        SET status = 'completed', completed_at = NOW() 
        WHERE id = $1`,
       [id]
     );
 
-    // Generate knowledge artifact
+    // Check if artifact already exists (idempotent for double-clicks)
+    const existingArtifact = await db.query(
+      `SELECT * FROM knowledge_artifacts WHERE chapter_id = $1 LIMIT 1`,
+      [id]
+    );
+
+    if (existingArtifact.rows.length > 0) {
+      return res.json({
+        success: true,
+        message: 'Chapter already completed',
+        artifact: existingArtifact.rows[0]
+      });
+    }
+
+    // Generate knowledge artifact (slow AI call — no DB transaction held)
     const keyPoints = Array.isArray(chapter.key_points)
       ? chapter.key_points
       : (chapter.key_points || []);
@@ -274,7 +286,7 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
     });
 
     // Save artifact
-    const artifactResult = await client.query(
+    const artifactResult = await db.query(
       `INSERT INTO knowledge_artifacts (
         project_id, chapter_id, user_id, title, content, 
         summary, tags, created_at
@@ -289,8 +301,6 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
       ]
     );
 
-    await client.query('COMMIT');
-
     res.json({
       success: true,
       message: 'Chapter completed and artifact created',
@@ -298,11 +308,8 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
     });
 
   } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error completing chapter:', error);
+    console.error('❌ Error completing chapter:', error);
     res.status(500).json({ error: 'Failed to complete chapter' });
-  } finally {
-    client.release();
   }
 });
 

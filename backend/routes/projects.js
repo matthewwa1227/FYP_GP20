@@ -20,50 +20,53 @@ router.post('/', authenticateToken, async (req, res) => {
     return res.status(400).json({ error: 'Topic is required' });
   }
 
-  const client = await db.getClient();
   try {
-    await client.query('BEGIN');
-
-    // Generate project scope via AI
+    // Generate project scope via AI (outside transaction)
     const scope = await kimiService.generateProjectScope(topic, goal);
 
-    // Insert project
-    const projectResult = await client.query(
-      `INSERT INTO projects (
-        user_id, title, description, deliverable, 
-        topic, skill_tree, status, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-      RETURNING *`,
-      [
-        userId,
-        scope.title,
-        scope.description,
-        scope.deliverable,
-        topic,
-        JSON.stringify(scope.skillTree),
-        'active'
-      ]
-    );
+    // Insert project in a short transaction
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
 
-    const project = projectResult.rows[0];
+      const projectResult = await client.query(
+        `INSERT INTO projects (
+          user_id, title, description, deliverable, 
+          topic, skill_tree, status, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        RETURNING *`,
+        [
+          userId,
+          scope.title,
+          scope.description,
+          scope.deliverable,
+          topic,
+          JSON.stringify(scope.skillTree),
+          'active'
+        ]
+      );
 
-    await client.query('COMMIT');
+      const project = projectResult.rows[0];
+      await client.query('COMMIT');
 
-    console.log('✅ Project created:', project.id);
-    res.status(201).json({
-      success: true,
-      project: {
-        ...project,
-        skillTree: scope.skillTree
-      }
-    });
+      console.log('✅ Project created:', project.id);
+      res.status(201).json({
+        success: true,
+        project: {
+          ...project,
+          skillTree: scope.skillTree
+        }
+      });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
 
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('❌ Error creating project:', error);
     res.status(500).json({ error: 'Failed to create project' });
-  } finally {
-    client.release();
   }
 });
 
