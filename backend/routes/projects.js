@@ -14,7 +14,7 @@ router.post('/', authenticateToken, async (req, res) => {
   console.log('🚀 POST /projects received', req.body);
   const { topic, goal, subject } = req.body;
   const userId = req.user.id;
-  console.log('👤 userId:', userId);
+  console.log('👤 userId:', userId, 'topic:', topic, 'subject:', subject);
 
   if (!topic) {
     return res.status(400).json({ error: 'Topic is required' });

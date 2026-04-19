@@ -78,10 +78,12 @@ router.post('/start', authenticateToken, async (req, res) => {
     );
 
     if (projectResult.rows.length === 0) {
+      console.log(`❌ Boss battle start failed: project ${projectId} not found for user ${userId}`);
       return res.status(404).json({ success: false, error: 'Project not found' });
     }
 
     const project = projectResult.rows[0];
+    console.log(`📊 Project loaded: ${project.title} (subject: ${project.topic || 'N/A'})`);
 
     // Parallel fetch of artifacts, chapters, and existing battle
     const [artifactsResult, chaptersResult, existingResult] = await Promise.all([
@@ -104,7 +106,10 @@ router.post('/start', authenticateToken, async (req, res) => {
       )
     ]);
 
+    console.log(`📊 Data check: ${artifactsResult.rows.length} artifacts, ${chaptersResult.rows.length} completed chapters, ${existingResult.rows.length} existing battles`);
+
     if (artifactsResult.rows.length === 0 && chaptersResult.rows.length === 0) {
+      console.log(`❌ Boss battle start blocked: no artifacts or completed chapters for project ${projectId}`);
       return res.status(400).json({ 
         success: false, 
         error: 'Complete at least one chapter before starting the boss battle' 
@@ -112,6 +117,7 @@ router.post('/start', authenticateToken, async (req, res) => {
     }
 
     if (existingResult.rows.length > 0) {
+      console.log(`🔄 Resuming existing boss battle: ${existingResult.rows[0].id}`);
       return res.json({
         success: true,
         bossBattle: existingResult.rows[0],
@@ -121,6 +127,7 @@ router.post('/start', authenticateToken, async (req, res) => {
     }
 
     // Step 2: Generate boss battle via AI (NO DB client held during external API call)
+    console.log(`🤖 Calling AI to generate boss battle for topic: ${project.title}, deliverable: ${project.deliverable}`);
     const battle = await kimiService.generateBossBattle({
       topic: project.title,
       deliverable: project.deliverable,
@@ -129,6 +136,7 @@ router.post('/start', authenticateToken, async (req, res) => {
       skillTree: project.skill_tree || [],
       focus
     });
+    console.log(`✅ AI generated battle: ${battle.title}`);
 
     // Build full spec metadata
     const metadata = {
@@ -211,8 +219,14 @@ router.post('/start', authenticateToken, async (req, res) => {
     }
 
   } catch (error) {
-    console.error('❌ Error starting boss battle:', error);
-    res.status(500).json({ success: false, error: 'Failed to start boss battle' });
+    console.error('❌ Error starting boss battle:', {
+      message: error.message,
+      stack: error.stack?.substring(0, 500),
+      code: error.code,
+      projectId,
+      userId
+    });
+    res.status(500).json({ success: false, error: 'Failed to start boss battle: ' + (error.message || 'Unknown error') });
   }
 });
 

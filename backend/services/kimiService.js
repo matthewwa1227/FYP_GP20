@@ -1732,6 +1732,7 @@ RULES:
 - Progressive complexity (Chapter ${chapterNumber} should build on previous)`;
 
   try {
+    console.log(`🤖 [generateChapter] Generating chapter ${chapterNumber} for topic: ${topic}, skill: ${skillName}`);
     const response = await kimi.chat.completions.create({
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
@@ -1739,9 +1740,11 @@ RULES:
       response_format: { type: 'json_object' }
     });
 
-    return JSON.parse(response.choices[0].message.content);
+    const result = JSON.parse(response.choices[0].message.content);
+    console.log(`✅ [generateChapter] Generated: ${result.focus || skillName}, keyPoints: ${result.keyPoints?.length || 0}`);
+    return result;
   } catch (error) {
-    logger.error('❌ Chapter generation error:', error);
+    console.error('❌ [generateChapter] AI generation failed:', error.message);
     return {
       context: `You need to learn ${skillName} for your project.`,
       focus: skillName,
@@ -1965,6 +1968,7 @@ CRITICAL RULES:
 7. Adapt the battle theme to the subject. For English: use fantasy/narrative themes (Grammar Goblin, Word Wizard, etc.). For Programming: use builder/craft themes.`;
 
   try {
+    console.log(`🤖 [generateBossBattle] Sending prompt to AI for topic: ${topic}, focus: ${focus || 'none'}`);
     const response = await kimi.chat.completions.create({
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
@@ -1972,7 +1976,10 @@ CRITICAL RULES:
       response_format: { type: 'json_object' }
     });
 
-    const result = JSON.parse(response.choices[0].message.content);
+    const rawContent = response.choices[0].message.content;
+    console.log(`🤖 [generateBossBattle] AI raw response length: ${rawContent.length} chars`);
+    
+    const result = JSON.parse(rawContent);
     
     // Ensure each stage has required fields and UUIDs
     if (result.stages && Array.isArray(result.stages)) {
@@ -1989,10 +1996,11 @@ CRITICAL RULES:
       }));
     }
     
-    logger.info('✅ Boss battle generated:', result.title);
+    console.log(`✅ [generateBossBattle] Generated: ${result.title} with ${result.stages?.length || 0} stages`);
+    console.log(`   Stages: ${result.stages?.map(s => s.title).join(' | ')}`);
     return result;
   } catch (error) {
-    logger.error('❌ Boss battle generation error:', error);
+    console.error('❌ [generateBossBattle] AI generation failed:', error.message);
     return {
       title: `${topic} Final Challenge`,
       description: `Apply everything you learned to complete the ${deliverable}`,

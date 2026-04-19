@@ -14,7 +14,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
   console.log('🚀 POST /chapters/generate received', req.body);
   const { projectId, userRequest, context } = req.body;
   const userId = req.user.id;
-  console.log('👤 userId:', userId);
+  console.log('👤 userId:', userId, 'projectId:', projectId, 'userRequest:', userRequest);
 
   try {
     // Get project and previous chapters for context (read-only, no transaction)
