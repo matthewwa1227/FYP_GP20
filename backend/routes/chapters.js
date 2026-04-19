@@ -223,6 +223,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 router.post('/:id/complete', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const userId = req.user.id;
+  console.log(`🎯 Completing chapter ${id} for user ${userId}`);
 
   try {
     // Get chapter (verify ownership via project join)
@@ -237,18 +238,21 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
     );
 
     if (chapterResult.rows.length === 0) {
+      console.warn('⚠️ Chapter not found:', id);
       return res.status(404).json({ error: 'Chapter not found' });
     }
 
     const chapter = chapterResult.rows[0];
+    console.log('📖 Chapter found:', chapter.title);
 
-    // Mark chapter as completed (autocommit so row lock is released immediately)
+    // Mark chapter as completed
     await db.query(
       `UPDATE chapters 
        SET status = 'completed', completed_at = NOW() 
        WHERE id = $1`,
       [id]
     );
+    console.log('✅ Chapter marked as completed');
 
     // Check if artifact already exists (idempotent for double-clicks)
     const existingArtifact = await db.query(
@@ -257,6 +261,7 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
     );
 
     if (existingArtifact.rows.length > 0) {
+      console.log('🎨 Artifact already exists');
       return res.json({
         success: true,
         message: 'Chapter already completed',
@@ -264,11 +269,12 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
       });
     }
 
-    // Generate knowledge artifact (slow AI call — no DB transaction held)
+    // Generate knowledge artifact
     const keyPoints = Array.isArray(chapter.key_points)
       ? chapter.key_points
       : (chapter.key_points || []);
 
+    console.log('🤖 Generating artifact for:', chapter.title);
     const artifact = await kimiService.generateKnowledgeArtifact({
       topic: chapter.title,
       chapterTitle: chapter.title,
@@ -276,6 +282,15 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
       keyPoints: keyPoints,
       fullLesson: chapter.full_lesson
     });
+    console.log('🎨 Artifact generated:', artifact?.title);
+
+    // Validate artifact shape before inserting
+    const safeArtifact = {
+      title: artifact?.title || `${chapter.title} Reference`,
+      content: artifact?.content || keyPoints.map(kp => `- ${kp}`).join('\n'),
+      summary: artifact?.summary || `Reference for ${chapter.context}`,
+      tags: Array.isArray(artifact?.tags) ? artifact.tags : [chapter.title.toLowerCase(), 'reference']
+    };
 
     // Save artifact
     const artifactResult = await db.query(
@@ -286,12 +301,13 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
       RETURNING *`,
       [
         chapter.project_id, id, userId,
-        artifact.title,
-        artifact.content,
-        artifact.summary,
-        artifact.tags
+        safeArtifact.title,
+        safeArtifact.content,
+        safeArtifact.summary,
+        safeArtifact.tags
       ]
     );
+    console.log('💾 Artifact saved:', artifactResult.rows[0].id);
 
     res.json({
       success: true,
@@ -300,8 +316,8 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error completing chapter:', error);
-    res.status(500).json({ error: 'Failed to complete chapter' });
+    console.error('❌ Error completing chapter:', error.message, error.stack);
+    res.status(500).json({ error: 'Failed to complete chapter', details: error.message });
   }
 });
 
