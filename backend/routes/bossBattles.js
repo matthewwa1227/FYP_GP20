@@ -65,10 +65,10 @@ router.get('/', authenticateToken, async (req, res) => {
 // POST /start - Initialize a boss battle
 // ============================================
 router.post('/start', authenticateToken, async (req, res) => {
-  const { projectId } = req.body;
+  const { projectId, focus } = req.body;
   const userId = req.user.studentId || req.user.id;
 
-  console.log(`🎮 Starting Newquest boss battle for project ${projectId}, user ${userId}`);
+  console.log(`🎮 Starting Newquest boss battle for project ${projectId}, user ${userId}${focus ? ', focus: ' + focus : ''}`);
 
   try {
     // Step 1: Fetch all data first (no transaction needed for reads)
@@ -126,7 +126,8 @@ router.post('/start', authenticateToken, async (req, res) => {
       deliverable: project.deliverable,
       artifacts: artifactsResult.rows,
       chapters: chaptersResult.rows,
-      skillTree: project.skill_tree || []
+      skillTree: project.skill_tree || [],
+      focus
     });
 
     // Build full spec metadata

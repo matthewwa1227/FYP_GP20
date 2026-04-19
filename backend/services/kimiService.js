@@ -1905,7 +1905,7 @@ STYLE:
  * Generate boss battle (multi-stage synthesis challenge)
  * Full Newquest specification implementation
  */
-async function generateBossBattle({ topic, deliverable, artifacts, chapters, skillTree }) {
+async function generateBossBattle({ topic, deliverable, artifacts, chapters, skillTree, focus }) {
   const artifactSummaries = artifacts.map(a => `- ${a.title}: ${a.summary || 'Reference guide'}`).join('\n');
   const chapterSummaries = (chapters || []).map(c => `- ${c.title} (Chapter ${c.chapter_number})`).join('\n');
   
@@ -1913,7 +1913,7 @@ async function generateBossBattle({ topic, deliverable, artifacts, chapters, ski
 
 TOPIC: ${topic}
 FINAL DELIVERABLE: ${deliverable}
-
+${focus ? `\nSTUDENT'S FOCUS / WHAT THEY WANT TO LEARN:\n${focus}\n` : ''}
 COMPLETED CHAPTERS:
 ${chapterSummaries || '- No chapters completed yet'}
 
