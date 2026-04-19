@@ -2355,8 +2355,9 @@ function buildSmartFallback(content, title) {
   const words = content.toLowerCase().match(/\b[a-z]{4,}\b/g) || [];
   const freq = {};
   words.forEach(w => { freq[w] = (freq[w] || 0) + 1; });
+  const stopWords = new Set(['this','that','with','from','they','have','were','been','their','there','would','should','could','about','after','before','because','through','during','within','without','under','over','into','onto','upon','above','below','between','among','while','when','where','what','which','who','whom','whose','how','why','than','then','them','these','those','each','every','all','any','both','few','many','more','most','other','some','only','own','same','so','just','also','back','even','here','its','now','off','out','still','well']);
   const topWords = Object.entries(freq)
-    .filter(([w]) => !['this','that','with','from','they','have','were','been','their','there','would','should','could','about','after','before','because','through','during','within','without','under','over','into','onto','upon','above','below','between','among','during','while','when','where','what','which','who','whom','whose','how','why','than','then','them','these','those','such','each','every','all','any','both','few','many','more','most','other','some','such','only','own','same','so','than','too','very','just','also','back','even','here','how','its','now','off','only','out','still','such','too","very","well"].includes(w))
+    .filter(([w]) => !stopWords.has(w))
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6)
     .map(([w]) => w);
