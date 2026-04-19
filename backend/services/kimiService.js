@@ -1681,20 +1681,29 @@ RULES:
       const response = await kimi.chat.completions.create({
         model: 'kimi-k2.5',
         messages: [{ role: 'user', content: prompt }],
-        temperature: 1,
+        temperature: 0.3,
         max_tokens: 3000,
-        timeout: 30000,
+        timeout: 60000,
         response_format: { type: 'json_object' }
       });
 
       let raw = response.choices[0].message.content || '';
       raw = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+      raw = raw.replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '\"');
       const result = JSON.parse(raw);
       logger.info('✅ Project scope generated:', result.title);
       return result;
     } catch (error) {
-      const isRetryable = error.status === 429 || error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'AbortError';
-      console.error(`❌ [generateProjectScope] Attempt ${attempt} failed:`, error.message, isRetryable ? '(retryable)' : '');
+      const msg = (error.message || '').toLowerCase();
+      const isRetryable = error.status === 429
+        || error.code === 'ECONNRESET'
+        || error.code === 'ETIMEDOUT'
+        || error.code === 'AbortError'
+        || error.name === 'APIConnectionTimeoutError'
+        || msg.includes('timed out')
+        || msg.includes('timeout')
+        || error instanceof SyntaxError;
+      console.error(`❌ [generateProjectScope] Attempt ${attempt} failed:`, error.message, isRetryable ? '(retryable)' : '(fatal)');
       if (!isRetryable || attempt === 3) break;
       await new Promise(r => setTimeout(r, attempt * 2000));
     }
@@ -1755,30 +1764,41 @@ RULES:
 - Exactly 1 multiple-choice question with 4 options
 - Answer must be in the lesson
 - Connect to project goal
-- Build on previous chapter if any`;
+- Build on previous chapter if any
+- JSON CRITICAL: Escape all internal quotes with backslash. Never use unescaped quotes inside string values.`;
 
-  // Retry up to 3 times on 429 or network errors
+  // Retry up to 3 times on any error (429, network, or bad JSON)
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       console.log(`🤖 [generateChapter] Attempt ${attempt}/3 — chapter ${chapterNumber} for topic: ${topic}, skill: ${safeSkillName}`);
       const response = await kimi.chat.completions.create({
         model: 'kimi-k2.5',
         messages: [{ role: 'user', content: prompt }],
-        temperature: 1,
+        temperature: 0.3,
         max_tokens: 3000,
-        timeout: 30000,
+        timeout: 60000,
         response_format: { type: 'json_object' }
       });
 
       let raw = response.choices[0].message.content || '';
       // Strip markdown code fences if present
       raw = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+      // Fix common JSON issues: replace smart quotes, fix unescaped internal quotes
+      raw = raw.replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '\"');
       const result = JSON.parse(raw);
       console.log(`✅ [generateChapter] Generated: ${result.focus || safeSkillName}, keyPoints: ${result.keyPoints?.length || 0}`);
       return result;
     } catch (error) {
-      const isRetryable = error.status === 429 || error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'AbortError';
-      console.error(`❌ [generateChapter] Attempt ${attempt} failed:`, error.message, isRetryable ? '(retryable)' : '');
+      const msg = (error.message || '').toLowerCase();
+      const isRetryable = error.status === 429
+        || error.code === 'ECONNRESET'
+        || error.code === 'ETIMEDOUT'
+        || error.code === 'AbortError'
+        || error.name === 'APIConnectionTimeoutError'
+        || msg.includes('timed out')
+        || msg.includes('timeout')
+        || error instanceof SyntaxError;
+      console.error(`❌ [generateChapter] Attempt ${attempt} failed:`, error.message, isRetryable ? '(retryable)' : '(fatal)');
       if (!isRetryable || attempt === 3) {
         console.error('❌ [generateChapter] All retries exhausted, returning fallback');
         break;

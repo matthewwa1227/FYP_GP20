@@ -38,7 +38,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
       `SELECT COALESCE(MAX(chapter_number), 0) as max_num FROM chapters WHERE project_id = $1`,
       [projectId]
     );
-    const nextChapterNumber = parseInt(maxChapterRes.rows[0].max_num) + 1;
+    const nextChapterNumber = (parseInt(maxChapterRes.rows[0].max_num) || 0) + 1;
 
     // Check if chapter already exists
     const existingChapter = await db.query(
@@ -88,6 +88,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
 });
 
 async function generateChapterInBackground(projectId, userId, project, nextChapterNumber, userRequest, tierInfo) {
+  console.log(`🚀 [Background] Starting chapter ${nextChapterNumber} generation for project: ${projectId}, topic: ${project.title}`);
   try {
     // Get previous chapters for context
     const prevChapters = await db.query(
@@ -135,7 +136,7 @@ async function generateChapterInBackground(projectId, userId, project, nextChapt
         [
           projectId, nextChapterNumber,
           userRequest || `Chapter ${nextChapterNumber}`,
-          chapterContent.focus || userRequest || `Chapter ${previousTitles.length + 1}`,
+          chapterContent.focus || userRequest || `Chapter ${nextChapterNumber}`,
           chapterContent.context || project.description,
           JSON.stringify(content),
           'available'
