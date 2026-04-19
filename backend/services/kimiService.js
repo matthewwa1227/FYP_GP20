@@ -1682,12 +1682,14 @@ RULES:
         model: 'kimi-k2.5',
         messages: [{ role: 'user', content: prompt }],
         temperature: 1,
-        max_tokens: 1800,
+        max_tokens: 3000,
         timeout: 30000,
         response_format: { type: 'json_object' }
       });
 
-      const result = JSON.parse(response.choices[0].message.content);
+      let raw = response.choices[0].message.content || '';
+      raw = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+      const result = JSON.parse(raw);
       logger.info('✅ Project scope generated:', result.title);
       return result;
     } catch (error) {
@@ -1763,12 +1765,15 @@ RULES:
         model: 'kimi-k2.5',
         messages: [{ role: 'user', content: prompt }],
         temperature: 1,
-        max_tokens: 1800,
+        max_tokens: 3000,
         timeout: 30000,
         response_format: { type: 'json_object' }
       });
 
-      const result = JSON.parse(response.choices[0].message.content);
+      let raw = response.choices[0].message.content || '';
+      // Strip markdown code fences if present
+      raw = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+      const result = JSON.parse(raw);
       console.log(`✅ [generateChapter] Generated: ${result.focus || safeSkillName}, keyPoints: ${result.keyPoints?.length || 0}`);
       return result;
     } catch (error) {
@@ -1943,11 +1948,14 @@ STYLE:
       model: 'kimi-k2.5',
       messages: [{ role: 'user', content: prompt }],
       temperature: 1,
-      max_tokens: 800,
+      max_tokens: 1500,
+      timeout: 30000,
       response_format: { type: 'json_object' }
     });
 
-    return JSON.parse(response.choices[0].message.content);
+    let raw = response.choices[0].message.content || '';
+    raw = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+    return JSON.parse(raw);
   } catch (error) {
     logger.error('❌ Artifact generation error:', error);
     return {
