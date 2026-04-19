@@ -26,7 +26,11 @@ router.post('/', authenticateToken, async (req, res) => {
       `SELECT age_tier, form_level FROM students WHERE id = $1`,
       [userId]
     );
-    const tierInfo = userResult.rows[0] || null;
+    const dbTier = userResult.rows[0] || {};
+    const tierInfo = {
+      ageTier: dbTier.age_tier || null,
+      formLevel: dbTier.form_level || null
+    };
 
     // Generate project scope via AI (outside transaction)
     const scope = await kimiService.generateProjectScope(topic, goal, tierInfo, subject);

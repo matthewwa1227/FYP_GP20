@@ -59,9 +59,20 @@ router.post('/projects', authenticateToken, async (req, res) => {
     try {
         await setUserContext(userId);
 
+        // Get user tier info for age-appropriate content
+        const userResult = await db.query(
+            `SELECT age_tier, form_level FROM students WHERE id = $1`,
+            [userId]
+        );
+        const dbTier = userResult.rows[0] || {};
+        const tierInfo = {
+            ageTier: dbTier.age_tier || null,
+            formLevel: dbTier.form_level || null
+        };
+
         // 1. Generate project scope with AI
         console.log(`🎯 Generating project scope for: ${topic}`);
-        const scope = await kimiService.generateProjectScope(topic, goal);
+        const scope = await kimiService.generateProjectScope(topic, goal, tierInfo, topic);
 
         // 2. Create project record
         const projectResult = await db.query(`
@@ -90,7 +101,9 @@ router.post('/projects', authenticateToken, async (req, res) => {
             chapterNumber: 1,
             skillName: firstSkill.name,
             projectContext: scope.description,
-            deliverable: scope.deliverable
+            deliverable: scope.deliverable,
+            tierInfo,
+            subject: topic
         });
 
         // 4. Create chapter record
@@ -249,6 +262,17 @@ router.post('/chapters/generate', authenticateToken, async (req, res) => {
     try {
         await setUserContext(userId);
 
+        // Get user tier info for age-appropriate content
+        const userResult = await db.query(
+            `SELECT age_tier, form_level FROM students WHERE id = $1`,
+            [userId]
+        );
+        const dbTier = userResult.rows[0] || {};
+        const tierInfo = {
+            ageTier: dbTier.age_tier || null,
+            formLevel: dbTier.form_level || null
+        };
+
         // Get project info
         const projectResult = await db.query(`
             SELECT * FROM projects WHERE id = $1 AND user_id = $2
@@ -305,7 +329,9 @@ router.post('/chapters/generate', authenticateToken, async (req, res) => {
             skillName: nextSkill.name,
             projectContext: project.description,
             deliverable: project.deliverable,
-            previousContext: previousChapterId ? await getChapterContext(previousChapterId) : null
+            previousContext: previousChapterId ? await getChapterContext(previousChapterId) : null,
+            tierInfo,
+            subject: project.topic
         });
 
         // Create chapter record

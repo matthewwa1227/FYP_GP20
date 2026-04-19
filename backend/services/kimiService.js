@@ -50,11 +50,22 @@ const TIER_PROMPT_CONFIG = {
   }
 };
 
+function deriveAgeTierFromFormLevel(formLevel) {
+  if (!formLevel) return null;
+  const f = String(formLevel).toUpperCase();
+  if (f === 'P1' || f === 'P2' || f === 'P3') return 'P1-P3';
+  if (f === 'P4' || f === 'P5' || f === 'P6') return 'P4-P6';
+  if (f === 'S1' || f === 'S2' || f === 'S3') return 'S1-S3';
+  if (f === 'S4' || f === 'S5' || f === 'S6') return 'S4-S6';
+  return null;
+}
+
 function getTierPrompt(tierInfo) {
-  if (!tierInfo || !tierInfo.ageTier) {
+  const effectiveAgeTier = tierInfo?.ageTier || deriveAgeTierFromFormLevel(tierInfo?.formLevel);
+  if (!effectiveAgeTier) {
     return TIER_PROMPT_CONFIG['P4-P6']; // Safe default
   }
-  return TIER_PROMPT_CONFIG[tierInfo.ageTier] || TIER_PROMPT_CONFIG['P4-P6'];
+  return TIER_PROMPT_CONFIG[effectiveAgeTier] || TIER_PROMPT_CONFIG['P4-P6'];
 }
 
 function buildTierInstructions(tierInfo) {
@@ -1646,8 +1657,10 @@ Important:
  * Creates a project-based learning scope with skill tree
  */
 function buildCurriculumConstraints(tierInfo, subject) {
-  const ageTier = tierInfo?.ageTier || '';
+  const ageTier = tierInfo?.ageTier || deriveAgeTierFromFormLevel(tierInfo?.formLevel) || '';
+  const formLevel = tierInfo?.formLevel || '';
   const isPrimary = ageTier.startsWith('P');
+  const isP1P3 = ageTier === 'P1-P3' || formLevel === 'P1' || formLevel === 'P2' || formLevel === 'P3';
   const subjectLower = (subject || '').toLowerCase();
   const isMath = subjectLower.includes('math');
   const isEnglish = subjectLower.includes('english');
@@ -1655,17 +1668,29 @@ function buildCurriculumConstraints(tierInfo, subject) {
   const isHistory = subjectLower.includes('history');
 
   let constraints = '';
-  if (isPrimary) {
-    constraints += `\n🚫 CRITICAL — PRIMARY SCHOOL CONTENT ONLY: NEVER use cryptography, codebreaking, modular arithmetic, algebra, abstract math, advanced equations, calculus, complex literature, Shakespeare, or university-level concepts.`;
-    if (isMath) {
-      constraints += `\n✅ PRIMARY MATH ONLY: counting, addition, subtraction (within 100), basic 2D shapes, number patterns, simple measurement, telling time, coins/money, length/weight. Use toys, food, animals, MTR, dim sum, Ocean Park, parks as examples. NO fractions, NO negative numbers, NO variables.`;
-    } else if (isEnglish) {
-      constraints += `\n✅ PRIMARY ENGLISH ONLY: phonics, sight words, simple sentences (5-8 words), basic grammar (a/an, he/she, present tense), reading short stories, everyday vocabulary. NO complex literature analysis.`;
-    } else if (isScience) {
-      constraints += `\n✅ PRIMARY SCIENCE ONLY: plants, animals, weather, magnets, simple experiments, body parts, senses, water cycle. NO chemistry equations, NO physics formulas.`;
-    } else if (isHistory) {
-      constraints += `\n✅ PRIMARY HISTORY ONLY: daily life in the past, famous Hong Kong landmarks, family history, traditional festivals. NO wars, NO politics.`;
+  if (isPrimary || isP1P3) {
+    constraints += `\n\n⛔⛔⛔ ABSOLUTE HARD CONSTRAINTS — PRIMARY SCHOOL (AGES 6-11) ⛔⛔⛔`;
+    constraints += `\n- You MUST ONLY use concepts taught in Hong Kong primary school.`;
+    constraints += `\n- If you cannot generate appropriate content, return the JSON with title "Basic ${subject || 'Learning'} Project" and simple skills.`;
+    if (isP1P3 || formLevel === 'P1' || formLevel === 'P2') {
+      constraints += `\n- This is P1-P2 (ages 6-7). ONLY: counting to 100, single-digit addition/subtraction, circles/squares/triangles, comparing sizes, telling time (o'clock), coin values.`;
     }
+    if (isMath) {
+      constraints += `\n- ✅ ALLOWED MATH: counting, addition, subtraction within 100, basic 2D shapes (circle, square, triangle, rectangle), number patterns (2,4,6...), simple measurement (long/short, heavy/light), telling time, counting coins, days of the week.`;
+      constraints += `\n- ❌ FORBIDDEN MATH: fractions, negative numbers, multiplication tables beyond 2x, division, algebra, variables, geometry proofs, angles, area, perimeter, sequences, nth term, modular arithmetic, cryptography, codebreaking, password security, AI, machine learning.`;
+      constraints += `\n- EXAMPLES OF GOOD PROJECTS: "The Toy Shop Counter" (counting toys, adding prices), "Shape Safari at Ocean Park" (finding shapes), "My Piggy Bank" (counting coins), "MTR Station Numbers" (reading platform numbers, counting stops).`;
+      constraints += `\n- EXAMPLES OF BAD PROJECTS (NEVER DO): "The Cipher Chase", "Escape Room", "Codebreakers", "Modular Arithmetic", "Geometric Sequences", "Password Security", "AI Prediction".`;
+    } else if (isEnglish) {
+      constraints += `\n- ✅ ALLOWED ENGLISH: phonics (a-z sounds), sight words (the, and, is, I, you), simple sentences 3-7 words, present tense verbs, a/an, he/she/it, colors, numbers 1-20, family words, animals, food.`;
+      constraints += `\n- ❌ FORBIDDEN ENGLISH: past tense, future tense, complex grammar, Shakespeare, literature analysis, essay writing, passive voice, conditionals.`;
+    } else if (isScience) {
+      constraints += `\n- ✅ ALLOWED SCIENCE: animals and their babies, plants need water/sun, hot vs cold, magnets stick to metal, 5 senses, body parts, weather (rain/sun/cloud).`;
+      constraints += `\n- ❌ FORBIDDEN SCIENCE: atoms, molecules, chemical equations, physics formulas, electricity circuits, DNA, evolution.`;
+    } else if (isHistory) {
+      constraints += `\n- ✅ ALLOWED HISTORY: daily life long ago, family tree, Hong Kong landmarks (Victoria Peak, Star Ferry), Chinese festivals (Mid-Autumn, Chinese New Year).`;
+      constraints += `\n- ❌ FORBIDDEN HISTORY: wars, battles, politics, revolutions, colonization, World War.`;
+    }
+    constraints += `\n- ALL EXAMPLES must use: toys, food, animals, parks, MTR, dim sum, school, family.`;
   } else if (ageTier.startsWith('S')) {
     const form = tierInfo?.formLevel || '';
     if (form === 'S1' || form === 'S2' || form === 'S3' || ageTier === 'S1-S3') {
@@ -1676,17 +1701,49 @@ function buildCurriculumConstraints(tierInfo, subject) {
   return constraints;
 }
 
+function getAgeAppropriateFallback(topic, subject, tierInfo) {
+  const ageTier = tierInfo?.ageTier || '';
+  const formLevel = tierInfo?.formLevel || '';
+  const isP1P3 = ageTier === 'P1-P3' || formLevel === 'P1' || formLevel === 'P2' || formLevel === 'P3';
+  const isMath = (subject || '').toLowerCase().includes('math');
+
+  if (isP1P3 && isMath) {
+    return {
+      title: 'Toy Shop Math Adventure',
+      description: 'Help run a toy shop! Count toys, add up prices, and give customers the right change.',
+      deliverable: 'A toy shop price list and receipt',
+      skillTree: [
+        { id: '1', name: 'Counting Toys', prerequisites: [], unlocks: ['2'], estimatedMinutes: 15 },
+        { id: '2', name: 'Adding Prices', prerequisites: ['1'], unlocks: ['3'], estimatedMinutes: 20 },
+        { id: '3', name: 'Making Change', prerequisites: ['2'], unlocks: [], estimatedMinutes: 20 }
+      ]
+    };
+  }
+  return {
+    title: `${topic} Project`,
+    description: `Learn ${topic} by building a practical project`,
+    deliverable: `Working ${topic} solution`,
+    skillTree: [
+      { id: '1', name: 'Basics', prerequisites: [], unlocks: ['2'], estimatedMinutes: 20 },
+      { id: '2', name: 'Core Concepts', prerequisites: ['1'], unlocks: ['3'], estimatedMinutes: 25 },
+      { id: '3', name: 'Advanced Application', prerequisites: ['2'], unlocks: [], estimatedMinutes: 30 }
+    ]
+  };
+}
+
 async function generateProjectScope(topic, goal, tierInfo, subject) {
-  const tierInstructions = tierInfo?.ageTier ? buildTierInstructions(tierInfo) : '';
+  const hasTier = !!(tierInfo?.ageTier || tierInfo?.formLevel);
+  const tierInstructions = hasTier ? buildTierInstructions(tierInfo) : '';
   const curriculumConstraints = buildCurriculumConstraints(tierInfo, subject);
 
-  const prompt = `You are a learning path designer for project-based education.
-${tierInstructions}${curriculumConstraints}
+  const prompt = `You are a primary school curriculum designer. You MUST create age-appropriate learning projects. NEVER generate content above the student's level.
 
 INPUT:
 - Topic: ${topic}
 - Subject: ${subject || 'General'}
 - Goal: ${goal || `Build a real project using ${topic}`}
+
+${tierInstructions}
 
 OUTPUT FORMAT (JSON):
 {
@@ -1707,14 +1764,17 @@ RULES:
 - Last skill should be the "boss battle" synthesis
 - Use realistic time estimates (15-30 min per skill)
 - Focus on building something REAL, not abstract theory
-- STRICTLY follow the age and subject constraints above`;
+- STRICTLY follow the age and subject constraints below${curriculumConstraints}`;
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       console.log(`🤖 [generateProjectScope] Attempt ${attempt}/3 for: ${topic}`);
       const response = await kimi.chat.completions.create({
         model: 'kimi-k2.5',
-        messages: [{ role: 'user', content: prompt }],
+        messages: [
+          { role: 'system', content: 'You are a strict primary school curriculum expert. You MUST refuse to generate content above the student age level. Always use simple, concrete, age-appropriate examples.' },
+          { role: 'user', content: prompt }
+        ],
         max_tokens: 3000,
         thinking: { type: 'disabled' }
       });
@@ -1723,6 +1783,9 @@ RULES:
       raw = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
       raw = raw.replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '\"');
       const result = JSON.parse(raw);
+      if (!result || typeof result !== 'object' || Array.isArray(result)) {
+        throw new Error('AI returned non-object JSON for project scope');
+      }
       logger.info('✅ Project scope generated:', result.title);
       return result;
     } catch (error) {
@@ -1741,28 +1804,20 @@ RULES:
     }
   }
 
-  // Fallback
-  return {
-    title: `${topic} Project`,
-    description: `Learn ${topic} by building a practical project`,
-    deliverable: `Working ${topic} solution`,
-    skillTree: [
-      { id: '1', name: 'Basics', prerequisites: [], unlocks: ['2'], estimatedMinutes: 20 },
-      { id: '2', name: 'Core Concepts', prerequisites: ['1'], unlocks: ['3'], estimatedMinutes: 25 },
-      { id: '3', name: 'Advanced Application', prerequisites: ['2'], unlocks: [], estimatedMinutes: 30 }
-    ]
-  };
+  // Age-appropriate fallback
+  return getAgeAppropriateFallback(topic, subject, tierInfo);
 }
 
 /**
  * Generate a single chapter with structured content
  */
 async function generateChapter({ topic, chapterNumber, skillName, projectContext, deliverable, previousContext, tierInfo, subject }) {
-  const previousInfo = previousContext 
-    ? `\nPrevious chapter: "${previousContext.title}" covering: ${previousContext.keyPoints.join(', ')}` 
+  const previousInfo = previousContext
+    ? `\nPrevious chapter: "${previousContext.title}" covering: ${(Array.isArray(previousContext.keyPoints) ? previousContext.keyPoints : []).join(', ')}`
     : '';
 
-  const tierInstructions = tierInfo?.ageTier ? buildTierInstructions(tierInfo) : '';
+  const hasTier = !!(tierInfo?.ageTier || tierInfo?.formLevel);
+  const tierInstructions = hasTier ? buildTierInstructions(tierInfo) : '';
   const curriculumConstraints = buildCurriculumConstraints(tierInfo, subject);
   const safeSkillName = skillName || `Chapter ${chapterNumber}`;
 
@@ -1799,7 +1854,8 @@ RULES:
 - Connect to project goal
 - Build on previous chapter if any
 - STRICTLY follow the age and subject constraints above
-- JSON CRITICAL: Escape all internal quotes with backslash. Never use unescaped quotes inside string values.`;
+- JSON CRITICAL: Escape all internal quotes with backslash. Never use unescaped quotes inside string values.
+- LANGUAGE CRITICAL: Follow the LANGUAGE LEVEL instruction exactly. Use ONLY the vocabulary and sentence complexity specified for the student's age tier. If the language level says "5-8 word sentences", NEVER write longer sentences.`;
 
   // Retry up to 3 times on any error (429, network, or bad JSON)
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -1980,11 +2036,16 @@ TONE:
  * Generate knowledge artifact (cheat sheet) after chapter completion
  */
 async function generateKnowledgeArtifact({ topic, chapterTitle, focusArea, keyPoints, fullLesson }) {
+  // Defensive: ensure keyPoints is always an array of strings
+  const safeKeyPoints = Array.isArray(keyPoints)
+    ? keyPoints.filter(kp => kp !== null && kp !== undefined).map(String)
+    : (typeof keyPoints === 'string' ? [keyPoints] : []);
+
   const prompt = `Create a brief knowledge artifact (cheat sheet).
 
 TOPIC: ${topic}
 CHAPTER: ${chapterTitle}
-KEY POINTS: ${keyPoints.join(', ')}
+KEY POINTS: ${safeKeyPoints.join(', ')}
 
 OUTPUT FORMAT (JSON):
 {
@@ -2019,7 +2080,7 @@ STYLE:
     return {
       title: `${chapterTitle} Reference`,
       summary: `Quick reference for ${focusArea}`,
-      content: keyPoints.map(kp => `- ${kp}`).join('\n'),
+      content: safeKeyPoints.map(kp => `- ${kp}`).join('\n'),
       tags: [topic.toLowerCase(), 'reference']
     };
   }

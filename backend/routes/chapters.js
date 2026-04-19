@@ -76,7 +76,11 @@ router.post('/generate', authenticateToken, async (req, res) => {
       `SELECT age_tier, form_level FROM students WHERE id = $1`,
       [userId]
     );
-    const tierInfo = userResult.rows[0] || null;
+    const dbTier = userResult.rows[0] || {};
+    const tierInfo = {
+      ageTier: dbTier.age_tier || null,
+      formLevel: dbTier.form_level || null
+    };
 
     // Generate in background (fire-and-forget)
     generateChapterInBackground(projectId, userId, project, nextChapterNumber, userRequest, tierInfo);
@@ -311,8 +315,8 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
 
     // Generate knowledge artifact
     const keyPoints = Array.isArray(chapter.key_points)
-      ? chapter.key_points
-      : (chapter.key_points || []);
+      ? chapter.key_points.filter(kp => kp !== null && kp !== undefined)
+      : (typeof chapter.key_points === 'string' ? [chapter.key_points] : []);
 
     console.log('🤖 Generating artifact for:', chapter.title);
     const artifact = await kimiService.generateKnowledgeArtifact({
