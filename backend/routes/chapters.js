@@ -112,7 +112,8 @@ async function generateChapterInBackground(projectId, userId, project, nextChapt
       projectContext: project.description,
       deliverable: project.deliverable,
       previousContext,
-      tierInfo
+      tierInfo,
+      subject: project.topic
     });
 
     const content = {

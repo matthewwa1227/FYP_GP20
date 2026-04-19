@@ -29,7 +29,7 @@ router.post('/', authenticateToken, async (req, res) => {
     const tierInfo = userResult.rows[0] || null;
 
     // Generate project scope via AI (outside transaction)
-    const scope = await kimiService.generateProjectScope(topic, goal, tierInfo);
+    const scope = await kimiService.generateProjectScope(topic, goal, tierInfo, subject);
 
     // Insert project in a short transaction
     const client = await db.getClient();

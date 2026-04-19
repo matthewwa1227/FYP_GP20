@@ -1645,14 +1645,47 @@ Important:
  * Generate project scope for StudyQuest Rebuild
  * Creates a project-based learning scope with skill tree
  */
-async function generateProjectScope(topic, goal, tierInfo) {
+function buildCurriculumConstraints(tierInfo, subject) {
+  const ageTier = tierInfo?.ageTier || '';
+  const isPrimary = ageTier.startsWith('P');
+  const subjectLower = (subject || '').toLowerCase();
+  const isMath = subjectLower.includes('math');
+  const isEnglish = subjectLower.includes('english');
+  const isScience = subjectLower.includes('science');
+  const isHistory = subjectLower.includes('history');
+
+  let constraints = '';
+  if (isPrimary) {
+    constraints += `\n🚫 CRITICAL — PRIMARY SCHOOL CONTENT ONLY: NEVER use cryptography, codebreaking, modular arithmetic, algebra, abstract math, advanced equations, calculus, complex literature, Shakespeare, or university-level concepts.`;
+    if (isMath) {
+      constraints += `\n✅ PRIMARY MATH ONLY: counting, addition, subtraction (within 100), basic 2D shapes, number patterns, simple measurement, telling time, coins/money, length/weight. Use toys, food, animals, MTR, dim sum, Ocean Park, parks as examples. NO fractions, NO negative numbers, NO variables.`;
+    } else if (isEnglish) {
+      constraints += `\n✅ PRIMARY ENGLISH ONLY: phonics, sight words, simple sentences (5-8 words), basic grammar (a/an, he/she, present tense), reading short stories, everyday vocabulary. NO complex literature analysis.`;
+    } else if (isScience) {
+      constraints += `\n✅ PRIMARY SCIENCE ONLY: plants, animals, weather, magnets, simple experiments, body parts, senses, water cycle. NO chemistry equations, NO physics formulas.`;
+    } else if (isHistory) {
+      constraints += `\n✅ PRIMARY HISTORY ONLY: daily life in the past, famous Hong Kong landmarks, family history, traditional festivals. NO wars, NO politics.`;
+    }
+  } else if (ageTier.startsWith('S')) {
+    const form = tierInfo?.formLevel || '';
+    if (form === 'S1' || form === 'S2' || form === 'S3' || ageTier === 'S1-S3') {
+      constraints += `\n✅ SECONDARY 1-3 LEVEL: Normal school curriculum. NO university content.`;
+      if (isMath) constraints += `\n✅ S1-S3 MATH: algebra basics, geometry, linear equations, graphs, statistics, percentages. NO calculus, NO abstract algebra.`;
+    }
+  }
+  return constraints;
+}
+
+async function generateProjectScope(topic, goal, tierInfo, subject) {
   const tierInstructions = tierInfo?.ageTier ? buildTierInstructions(tierInfo) : '';
+  const curriculumConstraints = buildCurriculumConstraints(tierInfo, subject);
 
   const prompt = `You are a learning path designer for project-based education.
-${tierInstructions}
+${tierInstructions}${curriculumConstraints}
 
 INPUT:
 - Topic: ${topic}
+- Subject: ${subject || 'General'}
 - Goal: ${goal || `Build a real project using ${topic}`}
 
 OUTPUT FORMAT (JSON):
@@ -1673,7 +1706,8 @@ RULES:
 - Prerequisites must be completed before unlocking
 - Last skill should be the "boss battle" synthesis
 - Use realistic time estimates (15-30 min per skill)
-- Focus on building something REAL, not abstract theory`;
+- Focus on building something REAL, not abstract theory
+- STRICTLY follow the age and subject constraints above`;
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
@@ -1723,16 +1757,17 @@ RULES:
 /**
  * Generate a single chapter with structured content
  */
-async function generateChapter({ topic, chapterNumber, skillName, projectContext, deliverable, previousContext, tierInfo }) {
+async function generateChapter({ topic, chapterNumber, skillName, projectContext, deliverable, previousContext, tierInfo, subject }) {
   const previousInfo = previousContext 
     ? `\nPrevious chapter: "${previousContext.title}" covering: ${previousContext.keyPoints.join(', ')}` 
     : '';
 
   const tierInstructions = tierInfo?.ageTier ? buildTierInstructions(tierInfo) : '';
+  const curriculumConstraints = buildCurriculumConstraints(tierInfo, subject);
   const safeSkillName = skillName || `Chapter ${chapterNumber}`;
 
   const prompt = `You are an expert educator creating a project-based learning chapter.
-${tierInstructions}
+${tierInstructions}${curriculumConstraints}
 
 TOPIC: ${topic}
 CHAPTER ${chapterNumber}: ${safeSkillName}
@@ -1763,6 +1798,7 @@ RULES:
 - Answer must be in the lesson
 - Connect to project goal
 - Build on previous chapter if any
+- STRICTLY follow the age and subject constraints above
 - JSON CRITICAL: Escape all internal quotes with backslash. Never use unescaped quotes inside string values.`;
 
   // Retry up to 3 times on any error (429, network, or bad JSON)
@@ -1973,7 +2009,11 @@ STYLE:
 
     let raw = response.choices[0].message.content || '';
     raw = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('AI returned non-object JSON for artifact');
+    }
+    return parsed;
   } catch (error) {
     logger.error('❌ Artifact generation error:', error);
     return {
