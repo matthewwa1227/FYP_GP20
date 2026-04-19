@@ -1681,7 +1681,7 @@ RULES:
       const response = await kimi.chat.completions.create({
         model: 'kimi-k2.5',
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
+        temperature: 1,
         max_tokens: 3000,
         timeout: 60000,
         response_format: { type: 'json_object' }
@@ -1774,7 +1774,7 @@ RULES:
       const response = await kimi.chat.completions.create({
         model: 'kimi-k2.5',
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
+        temperature: 1,
         max_tokens: 3000,
         timeout: 60000,
         response_format: { type: 'json_object' }
