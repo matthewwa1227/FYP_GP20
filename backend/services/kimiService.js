@@ -1645,8 +1645,11 @@ Important:
  * Generate project scope for StudyQuest Rebuild
  * Creates a project-based learning scope with skill tree
  */
-async function generateProjectScope(topic, goal) {
+async function generateProjectScope(topic, goal, tierInfo) {
+  const tierInstructions = tierInfo?.ageTier ? buildTierInstructions(tierInfo) : '';
+
   const prompt = `You are a learning path designer for project-based education.
+${tierInstructions}
 
 INPUT:
 - Topic: ${topic}
@@ -1654,9 +1657,9 @@ INPUT:
 
 OUTPUT FORMAT (JSON):
 {
-  "title": "Specific project title (e.g., 'Fitness Data Dashboard')",
+  "title": "Specific project title",
   "description": "What the student will build (2-3 sentences)",
-  "deliverable": "Concrete end product (e.g., 'Working Python script that analyzes fitness data')",
+  "deliverable": "Concrete end product",
   "skillTree": [
     {"id": "1", "name": "First skill", "prerequisites": [], "unlocks": ["2"], "estimatedMinutes": 20},
     {"id": "2", "name": "Second skill", "prerequisites": ["1"], "unlocks": ["3"], "estimatedMinutes": 25},
@@ -1672,46 +1675,57 @@ RULES:
 - Use realistic time estimates (15-30 min per skill)
 - Focus on building something REAL, not abstract theory`;
 
-  try {
-    const response = await kimi.chat.completions.create({
-      model: 'kimi-k2.5',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 1,
-      max_tokens: 1800,
-      response_format: { type: 'json_object' }
-    });
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      console.log(`🤖 [generateProjectScope] Attempt ${attempt}/3 for: ${topic}`);
+      const response = await kimi.chat.completions.create({
+        model: 'kimi-k2.5',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 1,
+        max_tokens: 1800,
+        response_format: { type: 'json_object' }
+      });
 
-    const result = JSON.parse(response.choices[0].message.content);
-    logger.info('✅ Project scope generated:', result.title);
-    return result;
-  } catch (error) {
-    logger.error('❌ Project scope generation error:', error);
-    // Fallback
-    return {
-      title: `${topic} Project`,
-      description: `Learn ${topic} by building a practical project`,
-      deliverable: `Working ${topic} solution`,
-      skillTree: [
-        { id: '1', name: 'Basics', prerequisites: [], unlocks: ['2'], estimatedMinutes: 20 },
-        { id: '2', name: 'Core Concepts', prerequisites: ['1'], unlocks: ['3'], estimatedMinutes: 25 },
-        { id: '3', name: 'Advanced Application', prerequisites: ['2'], unlocks: [], estimatedMinutes: 30 }
-      ]
-    };
+      const result = JSON.parse(response.choices[0].message.content);
+      logger.info('✅ Project scope generated:', result.title);
+      return result;
+    } catch (error) {
+      const isRetryable = error.status === 429 || error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT';
+      console.error(`❌ [generateProjectScope] Attempt ${attempt} failed:`, error.message, isRetryable ? '(retryable)' : '');
+      if (!isRetryable || attempt === 3) break;
+      await new Promise(r => setTimeout(r, attempt * 2000));
+    }
   }
+
+  // Fallback
+  return {
+    title: `${topic} Project`,
+    description: `Learn ${topic} by building a practical project`,
+    deliverable: `Working ${topic} solution`,
+    skillTree: [
+      { id: '1', name: 'Basics', prerequisites: [], unlocks: ['2'], estimatedMinutes: 20 },
+      { id: '2', name: 'Core Concepts', prerequisites: ['1'], unlocks: ['3'], estimatedMinutes: 25 },
+      { id: '3', name: 'Advanced Application', prerequisites: ['2'], unlocks: [], estimatedMinutes: 30 }
+    ]
+  };
 }
 
 /**
  * Generate a single chapter with structured content
  */
-async function generateChapter({ topic, chapterNumber, skillName, projectContext, deliverable, previousContext }) {
+async function generateChapter({ topic, chapterNumber, skillName, projectContext, deliverable, previousContext, tierInfo }) {
   const previousInfo = previousContext 
     ? `\nPrevious chapter: "${previousContext.title}" covering: ${previousContext.keyPoints.join(', ')}` 
     : '';
 
+  const tierInstructions = tierInfo?.ageTier ? buildTierInstructions(tierInfo) : '';
+  const safeSkillName = skillName || `Chapter ${chapterNumber}`;
+
   const prompt = `You are an expert educator creating a project-based learning chapter.
+${tierInstructions}
 
 TOPIC: ${topic}
-CHAPTER ${chapterNumber}: ${skillName}
+CHAPTER ${chapterNumber}: ${safeSkillName}
 PROJECT CONTEXT: ${projectContext}
 FINAL DELIVERABLE: ${deliverable}${previousInfo}
 
@@ -1740,28 +1754,41 @@ RULES:
 - Connect to project goal
 - Build on previous chapter if any`;
 
-  try {
-    console.log(`🤖 [generateChapter] Generating chapter ${chapterNumber} for topic: ${topic}, skill: ${skillName}`);
-    const response = await kimi.chat.completions.create({
-      model: 'kimi-k2.5',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 1,
-      response_format: { type: 'json_object' }
-    });
+  // Retry up to 3 times on 429 or network errors
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      console.log(`🤖 [generateChapter] Attempt ${attempt}/3 — chapter ${chapterNumber} for topic: ${topic}, skill: ${safeSkillName}`);
+      const response = await kimi.chat.completions.create({
+        model: 'kimi-k2.5',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 1,
+        max_tokens: 1800,
+        response_format: { type: 'json_object' }
+      });
 
-    const result = JSON.parse(response.choices[0].message.content);
-    console.log(`✅ [generateChapter] Generated: ${result.focus || skillName}, keyPoints: ${result.keyPoints?.length || 0}`);
-    return result;
-  } catch (error) {
-    console.error('❌ [generateChapter] AI generation failed:', error.message);
-    return {
-      context: `You need to learn ${skillName} for your project.`,
-      focus: skillName,
-      keyPoints: ['Key concept 1', 'Key concept 2', 'Key concept 3'],
-      fullLesson: `This chapter covers ${skillName}. Here's how it works...`,
-      whyItMatters: `This skill is essential for completing your project.`
-    };
+      const result = JSON.parse(response.choices[0].message.content);
+      console.log(`✅ [generateChapter] Generated: ${result.focus || safeSkillName}, keyPoints: ${result.keyPoints?.length || 0}`);
+      return result;
+    } catch (error) {
+      const isRetryable = error.status === 429 || error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT';
+      console.error(`❌ [generateChapter] Attempt ${attempt} failed:`, error.message, isRetryable ? '(retryable)' : '');
+      if (!isRetryable || attempt === 3) {
+        console.error('❌ [generateChapter] All retries exhausted, returning fallback');
+        break;
+      }
+      // Wait before retrying: 2s, then 4s
+      await new Promise(r => setTimeout(r, attempt * 2000));
+    }
   }
+
+  // Fallback data
+  return {
+    context: `Let's learn about ${safeSkillName} together!`,
+    focus: safeSkillName,
+    keyPoints: [`What is ${safeSkillName}?`, `Why ${safeSkillName} matters`, `How to use ${safeSkillName}`],
+    fullLesson: `In this chapter, we explore ${safeSkillName}. We start with the basics and build up step by step. By the end, you'll understand the core ideas and be ready to use them in your project.`,
+    whyItMatters: `Learning ${safeSkillName} helps you complete your project and grow your skills.`
+  };
 }
 
 /**

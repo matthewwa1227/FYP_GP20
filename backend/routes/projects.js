@@ -21,8 +21,15 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 
   try {
+    // Get user tier info for age-appropriate content
+    const userResult = await db.query(
+      `SELECT age_tier, form_level FROM students WHERE id = $1`,
+      [userId]
+    );
+    const tierInfo = userResult.rows[0] || null;
+
     // Generate project scope via AI (outside transaction)
-    const scope = await kimiService.generateProjectScope(topic, goal);
+    const scope = await kimiService.generateProjectScope(topic, goal, tierInfo);
 
     // Insert project in a short transaction
     const client = await db.getClient();

@@ -71,8 +71,15 @@ router.post('/generate', authenticateToken, async (req, res) => {
     generatingProjects.add(projectId);
     res.json({ success: true, status: 'generating' });
 
+    // Get user tier info for age-appropriate content
+    const userResult = await db.query(
+      `SELECT age_tier, form_level FROM students WHERE id = $1`,
+      [userId]
+    );
+    const tierInfo = userResult.rows[0] || null;
+
     // Generate in background (fire-and-forget)
-    generateChapterInBackground(projectId, userId, project, nextChapterNumber, userRequest);
+    generateChapterInBackground(projectId, userId, project, nextChapterNumber, userRequest, tierInfo);
 
   } catch (error) {
     console.error('❌ Error generating chapter:', error);
@@ -80,7 +87,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
   }
 });
 
-async function generateChapterInBackground(projectId, userId, project, nextChapterNumber, userRequest) {
+async function generateChapterInBackground(projectId, userId, project, nextChapterNumber, userRequest, tierInfo) {
   try {
     // Get previous chapters for context
     const prevChapters = await db.query(
@@ -103,7 +110,8 @@ async function generateChapterInBackground(projectId, userId, project, nextChapt
       skillName: userRequest || `Chapter ${nextChapterNumber}`,
       projectContext: project.description,
       deliverable: project.deliverable,
-      previousContext
+      previousContext,
+      tierInfo
     });
 
     const content = {
