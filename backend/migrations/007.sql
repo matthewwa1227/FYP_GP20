@@ -28,9 +28,7 @@ CREATE TABLE IF NOT EXISTS burnout_checks (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
--- =============================================
--- FAMILY DASHBOARD: Missing columns migration
--- =============================================
+
 
 -- 1. learning_schedules: add missing columns
 ALTER TABLE learning_schedules 

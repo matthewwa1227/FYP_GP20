@@ -1,11 +1,3 @@
--- ============================================
--- Comprehensive Features Migration
--- Progress, Goals, Rewards, Analytics, Study Groups, Challenges
--- ============================================
-
--- ============================================
--- 1. PROGRESS MONITORING & GOALS
--- ============================================
 
 -- Student goals table
 CREATE TABLE IF NOT EXISTS student_goals (
@@ -88,9 +80,7 @@ CREATE TABLE IF NOT EXISTS progress_tracking (
 CREATE INDEX IF NOT EXISTS idx_progress_tracking_student_date ON progress_tracking(student_id, tracking_date);
 CREATE INDEX IF NOT EXISTS idx_progress_tracking_week ON progress_tracking(tracking_year, tracking_week);
 
--- ============================================
--- 2. PARENT-TEACHER COLLABORATION ON REWARDS
--- ============================================
+
 
 -- Reward definitions (created by parents/teachers)
 CREATE TABLE IF NOT EXISTS reward_definitions (
@@ -818,9 +808,6 @@ CREATE TRIGGER update_optimized_schedules_updated_at
     BEFORE UPDATE ON optimized_schedules
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- ============================================
--- 12. NEW ACHIEVEMENTS
--- ============================================
 
 INSERT INTO achievements (name, description, icon, category, requirement_type, requirement_value, points_reward, badge_tier) VALUES
 -- Social achievements

@@ -84,14 +84,8 @@ CREATE TRIGGER update_revision_quizzes_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
--- ============================================
--- COMMENTS
--- ============================================
+
 COMMENT ON TABLE revision_documents IS 'Stores uploaded documents for revision mode';
 COMMENT ON TABLE revision_quizzes IS 'Quizzes generated from uploaded documents';
 COMMENT ON TABLE revision_quiz_attempts IS 'Tracks quiz attempts by users';
 
--- ============================================
--- SUCCESS MESSAGE
--- ============================================
-SELECT 'Revision mode migration applied successfully! 📚✨' as message;

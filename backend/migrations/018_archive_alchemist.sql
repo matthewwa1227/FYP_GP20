@@ -1,11 +1,4 @@
--- ============================================
--- Migration 018: Archive Alchemist - Document Ingestion Portal
--- ============================================
 
--- ============================================
--- ARCHIVE SESSIONS TABLE
--- Stores document uploads and AI-generated study notes
--- ============================================
 CREATE TABLE IF NOT EXISTS archive_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
@@ -60,7 +53,3 @@ CREATE TRIGGER update_archive_sessions_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_archive_sessions_updated_at();
 
--- ============================================
--- SUCCESS MESSAGE
--- ============================================
-SELECT 'Archive Alchemist migration applied successfully! 📜✨' as message;

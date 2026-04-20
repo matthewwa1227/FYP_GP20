@@ -1,12 +1,3 @@
--- ============================================
--- STUDYQUEST REBUILD - SEED DATA
--- Question Type Templates and Examples
--- ============================================
-
--- ============================================
--- 1. QUESTION TYPE TEMPLATES
--- These are JSON schemas for each question type
--- ============================================
 
 -- Create a table to store question type schemas
 CREATE TABLE IF NOT EXISTS question_type_schemas (

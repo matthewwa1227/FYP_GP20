@@ -51,5 +51,3 @@ ADD COLUMN IF NOT EXISTS age_tier VARCHAR(10) DEFAULT 'P4-P6',
 ADD COLUMN IF NOT EXISTS daily_time_limit_minutes INTEGER DEFAULT 25,
 ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT FALSE;
 
--- Optional: Update existing students to mark them as needing onboarding
--- UPDATE students SET onboarding_completed = FALSE WHERE form_level IS NULL;

@@ -1,6 +1,3 @@
--- ============================================
--- Fix Role Constraint - Add 'teacher' to valid roles
--- ============================================
 
 -- First, drop the existing constraint if it exists
 ALTER TABLE students DROP CONSTRAINT IF EXISTS valid_role;

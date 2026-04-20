@@ -1,7 +1,3 @@
--- ============================================
--- STUDYQUEST REBUILD - PHASE 1: DATA LAYER
--- Adaptive Project-Based Learning Module
--- ============================================
 
 -- ============================================
 -- 1. PROJECTS (Learning Paths)

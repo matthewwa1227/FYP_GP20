@@ -1,15 +1,9 @@
--- ============================================
--- StudyQuest Database Schema
--- FYP GP20 - Complete Migration
--- ============================================
+
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- ============================================
--- STUDENTS TABLE
--- Stores user profiles and gamification data
--- ============================================
+
 CREATE TABLE students (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     username VARCHAR(50) UNIQUE NOT NULL,
@@ -50,10 +44,7 @@ CREATE TABLE students (
 CREATE INDEX idx_students_email ON students(email);
 CREATE INDEX idx_students_username ON students(username);
 
--- ============================================
--- STUDY_SESSIONS TABLE
--- Tracks individual study sessions
--- ============================================
+
 CREATE TABLE study_sessions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
@@ -98,10 +89,7 @@ CREATE INDEX idx_sessions_started_at ON study_sessions(started_at);
 CREATE INDEX idx_sessions_status ON study_sessions(status);
 CREATE INDEX idx_sessions_is_active ON study_sessions(is_active);
 
--- ============================================
--- ACHIEVEMENTS TABLE
--- Defines available achievements
--- ============================================
+
 CREATE TABLE achievements (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     
@@ -127,10 +115,7 @@ CREATE TABLE achievements (
     CONSTRAINT valid_tier CHECK (badge_tier IN ('bronze', 'silver', 'gold', 'platinum'))
 );
 
--- ============================================
--- STUDENT_ACHIEVEMENTS TABLE
--- Junction table for student achievements
--- ============================================
+
 CREATE TABLE student_achievements (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
@@ -147,10 +132,7 @@ CREATE TABLE student_achievements (
 -- Indexes
 CREATE INDEX idx_student_achievements ON student_achievements(student_id);
 
--- ============================================
--- DAILY_GOALS TABLE
--- Tracks daily study goals
--- ============================================
+
 CREATE TABLE daily_goals (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
@@ -173,9 +155,7 @@ CREATE TABLE daily_goals (
 -- Index
 CREATE INDEX idx_daily_goals_student_date ON daily_goals(student_id, goal_date);
 
--- ============================================
--- FUNCTIONS & TRIGGERS
--- ============================================
+
 
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -265,9 +245,7 @@ INSERT INTO achievements (name, description, icon, category, requirement_type, r
 ('Deep Work', 'Complete a 60-minute focused session', '🧠', 'focus', 'single_session_minutes', 60, 200, 'silver'),
 ('Flow State', 'Complete a 120-minute focused session', '🌊', 'focus', 'single_session_minutes', 120, 500, 'gold');
 
--- ============================================
--- VIEWS FOR ANALYTICS
--- ============================================
+
 
 -- Student leaderboard view
 CREATE VIEW student_leaderboard AS
@@ -302,16 +280,10 @@ FROM study_sessions ss
 JOIN students s ON ss.student_id = s.id
 ORDER BY ss.started_at DESC;
 
--- ============================================
--- COMMENTS
--- ============================================
+
 COMMENT ON TABLE students IS 'Core user profiles with gamification stats';
 COMMENT ON TABLE study_sessions IS 'Individual study session records';
 COMMENT ON TABLE achievements IS 'Available achievements and badges';
 COMMENT ON TABLE student_achievements IS 'Unlocked achievements per student';
 COMMENT ON TABLE daily_goals IS 'Daily study targets and progress';
 
--- ============================================
--- SUCCESS MESSAGE
--- ============================================
-SELECT 'Database schema created successfully! 🎉' as message;

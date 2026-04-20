@@ -1,7 +1,3 @@
--- ============================================
--- Migration: MISSION 62 - Concurrent Access Fix
--- Adds constraints and indexes for race condition prevention
--- ============================================
 
 -- ============================================
 -- 1. UNIQUE CONSTRAINT: Only one active session per student

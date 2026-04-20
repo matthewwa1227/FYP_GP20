@@ -1,8 +1,3 @@
--- ============================================
--- NEWQUEST: Enhanced Boss Battle Schema
--- Adds metadata, hotfix tracking, and retake history
--- Compatible with 015_studyquest_rebuild.sql schema
--- ============================================
 
 -- Add metadata and master artifact columns to existing boss_battles
 ALTER TABLE boss_battles 
@@ -45,6 +40,3 @@ CREATE INDEX IF NOT EXISTS idx_boss_attempts_battle_id ON boss_battle_attempts(b
 CREATE INDEX IF NOT EXISTS idx_boss_attempts_user_id ON boss_battle_attempts(user_id);
 CREATE INDEX IF NOT EXISTS idx_boss_hotfixes_battle_id ON boss_battle_hotfixes(boss_battle_id);
 
--- ============================================
--- MIGRATION COMPLETE
--- ============================================

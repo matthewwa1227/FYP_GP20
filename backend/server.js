@@ -80,11 +80,7 @@ app.use('/api/achievements', userLimiter);
 app.use('/api/tasks', userLimiter);
 app.use('/api/student', userLimiter);
 
-// ============================================
-// REQUEST TIMEOUT HANDLER (MISSION 62)
-// Prevents hanging requests from consuming connections
-// Render limit is ~100s, we match that to avoid premature 503s on AI endpoints
-// ============================================
+
 app.use((req, res, next) => {
   req.setTimeout(100000, () => {
     if (res.headersSent) {
@@ -101,9 +97,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// ============================================
-// HEALTH & MONITORING ENDPOINTS (MISSION 62)
-// ============================================
 
 // Basic health check (no rate limit)
 app.get('/api/health', async (req, res) => {

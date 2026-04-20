@@ -1,7 +1,4 @@
--- =============================================
--- MIGRATION: HK Learning Schedule System
--- Phase 1: Student tier + schedule foundations
--- =============================================
+
 
 -- 1. Add tier columns to students
 ALTER TABLE students ADD COLUMN IF NOT EXISTS form_level VARCHAR(5);
@@ -137,14 +134,7 @@ CREATE INDEX IF NOT EXISTS idx_daily_session_log_student_date
 CREATE INDEX IF NOT EXISTS idx_students_form_level
   ON students(form_level);
 
-  -- =============================================
--- MIGRATION: HK Learning Schedule System
--- Phase 1 (UUID-corrected) + Phase 2
--- =============================================
 
--- =============================================
--- PART A: Student tier columns
--- =============================================
 ALTER TABLE students ADD COLUMN IF NOT EXISTS form_level VARCHAR(5);
 ALTER TABLE students ADD COLUMN IF NOT EXISTS age_tier VARCHAR(10);
 ALTER TABLE students ADD COLUMN IF NOT EXISTS daily_time_limit_minutes INTEGER;
@@ -198,9 +188,7 @@ CREATE TRIGGER trigger_set_tier_defaults
   WHEN (NEW.form_level IS NOT NULL)
   EXECUTE FUNCTION set_tier_defaults();
 
--- =============================================
--- PART B: Learning schedules (UUID foreign keys)
--- =============================================
+
 CREATE TABLE IF NOT EXISTS learning_schedules (
   id SERIAL PRIMARY KEY,
   student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
@@ -239,9 +227,7 @@ CREATE TABLE IF NOT EXISTS learning_schedules (
     UNIQUE (student_id, topic, status)
 );
 
--- =============================================
--- PART C: Daily session log (per-day tracking)
--- =============================================
+
 CREATE TABLE IF NOT EXISTS daily_session_log (
   id SERIAL PRIMARY KEY,
   student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
@@ -267,9 +253,7 @@ CREATE TABLE IF NOT EXISTS daily_session_log (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
--- =============================================
--- PART D: Burnout checks
--- =============================================
+
 CREATE TABLE IF NOT EXISTS burnout_checks (
   id SERIAL PRIMARY KEY,
   student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
@@ -283,9 +267,7 @@ CREATE TABLE IF NOT EXISTS burnout_checks (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
--- =============================================
--- PART E: Add mastery columns to story_quest_progress
--- =============================================
+
 ALTER TABLE story_quest_progress 
   ADD COLUMN IF NOT EXISTS mastery_score DECIMAL(5,2) DEFAULT 0;
 ALTER TABLE story_quest_progress 
@@ -297,9 +279,7 @@ ALTER TABLE story_quest_progress
 ALTER TABLE story_quest_progress 
   ADD COLUMN IF NOT EXISTS total_time_minutes INTEGER DEFAULT 0;
 
--- =============================================
--- PART F: Indexes
--- =============================================
+
 CREATE INDEX IF NOT EXISTS idx_learning_schedules_student
   ON learning_schedules(student_id, status);
 CREATE INDEX IF NOT EXISTS idx_daily_session_log_student_date
