@@ -141,7 +141,11 @@ const processDocument = async (filePath, mimeType) => {
 // PDF text extraction using pdf-parse
 const extractPdfText = async (filePath) => {
   try {
-    const pdfParse = require('pdf-parse');
+    const pdfModule = require('pdf-parse');
+    const pdfParse = typeof pdfModule === 'function' ? pdfModule : (pdfModule.default || pdfModule.parse);
+    if (typeof pdfParse !== 'function') {
+      throw new Error('pdf-parse module not available as a function');
+    }
     const buffer = await fs.readFile(filePath);
     const data = await pdfParse(buffer);
     if (data.text && data.text.trim().length > 50) {

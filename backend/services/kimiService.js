@@ -2369,17 +2369,46 @@ function extractStructuredSections(content, sentences, paragraphs, title) {
   });
 
   // Also detect sentence-level headings (short imperative/title sentences)
+  // Relaxed: allows common lowercase words between capitals, and single-word headings
   sentences.forEach((sent, idx) => {
     const trimmed = sent.trim();
-    if (trimmed.length > 5 && trimmed.length < 60 &&
-        /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,4}[.!?]$/.test(trimmed)) {
-      // Looks like "Selection of material." or "Presentation handling."
-      const alreadyFound = headingIndices.some(h => Math.abs(h.index - idx) < 2);
-      if (!alreadyFound) {
-        headingIndices.push({ index: idx, text: trimmed.replace(/[.!?]+$/, ''), isSentenceHeading: true });
+    const wordCount = trimmed.split(/\s+/).length;
+    if (trimmed.length > 5 && trimmed.length < 60 && wordCount <= 6 &&
+        /^[A-Z]/.test(trimmed) && /[.!:]$/.test(trimmed)) {
+      // Exclude obvious sentences (has lowercase words that aren't common connectors)
+      const words = trimmed.replace(/[.!:]$/, '').split(/\s+/);
+      const commonLowers = ['of', 'in', 'the', 'a', 'an', 'for', 'with', 'and', 'or', 'to', 'from', 'by', 'as', 'on', 'at', 'per', 'handling'];
+      const nonConnectorLowercase = words.filter((w, i) => {
+        if (i === 0) return false; // first word can be anything
+        return w[0] && w[0] === w[0].toLowerCase() && !commonLowers.includes(w.toLowerCase());
+      });
+      // Allow if at most 2 non-connector lowercase words
+      if (nonConnectorLowercase.length <= 2) {
+        const alreadyFound = headingIndices.some(h => Math.abs(h.index - idx) < 2);
+        if (!alreadyFound) {
+          headingIndices.push({ index: idx, text: trimmed.replace(/[.!:]+$/, ''), isSentenceHeading: true });
+        }
       }
     }
   });
+
+  // Detect colon-list patterns: "Points to consider:" followed by short items
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].match(/:\s*$/)) {
+      // Next 1-5 short lines might be sub-headings
+      for (let j = i + 1; j < lines.length && j <= i + 5; j++) {
+        const item = lines[j].trim();
+        if (item.length > 3 && item.length < 50 && /^[A-Z]/.test(item) && /[.!;]$/.test(item)) {
+          const alreadyFound = headingIndices.some(h => h.index === j);
+          if (!alreadyFound) {
+            headingIndices.push({ index: j, text: item.replace(/[.!;]+$/, ''), isListItem: true });
+          }
+        } else if (item.length === 0) {
+          break; // empty line ends the list
+        }
+      }
+    }
+  }
 
   // Sort and deduplicate headings
   headingIndices.sort((a, b) => a.index - b.index);
@@ -2442,8 +2471,9 @@ function extractStructuredSections(content, sentences, paragraphs, title) {
 }
 
 function extractKeyConcepts(content, sentences) {
-  // Extract capitalized phrases (potential proper nouns/key terms)
-  const phraseMatches = content.match(/\b[A-Z][a-z]+(?:\s+(?:of|in|the|a|an|for|with|and|or)\s+)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g) || [];
+  // Extract capitalized phrases — STRICT: max 3 words, limited connectors
+  // Pattern: CapitalWord [connector] CapitalWord [CapitalWord]
+  const phraseMatches = content.match(/\b[A-Z][a-zA-Z]+(?:\s+(?:of|in|for|with|and|or)\s+[A-Z][a-zA-Z]+)?(?:\s+[A-Z][a-zA-Z]+)?\b/g) || [];
 
   // Extract technical/academic terms (multi-word phrases that appear multiple times)
   const bigrams = [];
@@ -2504,8 +2534,14 @@ function isCommonPhrase(phrase) {
     'to the', 'by the', 'as the', 'it is', 'you need', 'you should', 'you will', 'we suggest', 'his her',
     'need to', 'should be', 'will be', 'can be', 'may be', 'have been', 'has been', 'had been',
     'each student', 'every student', 'all students', 'the student', 'the students', 'the presentation',
-    'the project', 'the system', 'the following', 'the most', 'the other'
+    'the project', 'the system', 'the following', 'the most', 'the other', 'hong kong', 'kong institute',
+    'institute of', 'of information', 'information technology', 'technology higher', 'higher diploma',
+    'diploma in', 'in software', 'software engineering', 'engineering final', 'final year',
+    'year project', 'project ite', 'oral presentation', 'presentation and', 'and demonstration',
+    'demonstration each', 'each project', 'project group'
   ]);
+  // Also reject phrases that are clearly run-on titles (too many capitalized words in a row from a title)
+  if (/^final year|year project|oral presentation|presentation and|and demonstration/.test(phrase.toLowerCase())) return true;
   return common.has(phrase.toLowerCase());
 }
 
@@ -2533,9 +2569,23 @@ function buildConceptMap(content, concepts, sentences, title) {
     }
   }
 
-  // Pick central concept (most frequent or first mentioned)
-  const centralConcept = concepts[0];
-  const otherConcepts = concepts.slice(1, 7);
+  // Pick central concept: prefer a concept that appears in the most sentences
+  // and is not a location/institution name
+  const institutionWords = new Set(['hong', 'kong', 'institute', 'university', 'college', 'school', 'academy']);
+  let centralIdx = 0;
+  let bestScore = -1;
+  for (let i = 0; i < concepts.length; i++) {
+    const c = concepts[i].toLowerCase();
+    const isInstitution = c.split(/\s+/).some(w => institutionWords.has(w));
+    const sentCount = sentences.filter(s => s.toLowerCase().includes(c)).length;
+    const score = sentCount - (isInstitution ? 5 : 0); // penalize institution names
+    if (score > bestScore) {
+      bestScore = score;
+      centralIdx = i;
+    }
+  }
+  const centralConcept = concepts[centralIdx];
+  const otherConcepts = concepts.filter((_, i) => i !== centralIdx).slice(0, 7);
 
   // Build nodes
   const nodes = [
@@ -2547,33 +2597,74 @@ function buildConceptMap(content, concepts, sentences, title) {
     }))
   ];
 
-  // Build connections based on co-occurrence and semantic patterns
+  // Build connections based on co-occurrence and semantic patterns from sentences
   const connections = [];
   const usedPairs = new Set();
 
-  for (const [pair, count] of Object.entries(cooccurrence).sort((a, b) => b[1] - a[1])) {
-    const [a, b] = pair.split('::');
-    const labelA = concepts.find(c => c.toLowerCase() === a) || a;
-    const labelB = concepts.find(c => c.toLowerCase() === b) || b;
+  // Helper: find relationship verb between two concepts in a sentence
+  function findRelationVerb(sent, conceptA, conceptB) {
+    const lower = sent.toLowerCase();
+    const idxA = lower.indexOf(conceptA.toLowerCase());
+    const idxB = lower.indexOf(conceptB.toLowerCase());
+    if (idxA < 0 || idxB < 0) return null;
+    const between = lower.substring(Math.min(idxA, idxB) + 20, Math.max(idxA, idxB));
+    if (between.includes('include') || between.includes('cover')) return 'includes';
+    if (between.includes('require') || between.includes('need')) return 'requires';
+    if (between.includes('demonstrat') || between.includes('show')) return 'demonstrates';
+    if (between.includes('test') || between.includes('evaluat')) return 'tests';
+    if (between.includes('design') || between.includes('creat')) return 'designs';
+    if (between.includes('use') || between.includes('utiliz')) return 'uses';
+    if (between.includes('plan') || between.includes('schedul')) return 'plans';
+    if (between.includes('follow') || between.includes('after')) return 'follows';
+    return null;
+  }
 
-    if (usedPairs.has(`${labelA}::${labelB}`)) continue;
-    usedPairs.add(`${labelA}::${labelB}`);
-
-    // Determine relationship type
-    let relation = 'related to';
-    const pairLower = `${a} ${b}`;
-    if (pairLower.includes('diagram') || pairLower.includes('architecture')) relation = 'illustrates';
-    else if (pairLower.includes('test') || pairLower.includes('strategy')) relation = 'validates';
-    else if (pairLower.includes('schedule') || pairLower.includes('plan')) relation = 'structures';
-    else if (pairLower.includes('presentation') || pairLower.includes('demonstration')) relation = 'part of';
-    else if (pairLower.includes('function') || pairLower.includes('system')) relation = 'defines';
-    else if (count >= 2) relation = 'closely linked to';
-
-    connections.push({ from: labelA, to: labelB, label: relation });
+  // Try to find semantic relations from sentences first
+  for (const sent of sentences) {
+    const present = concepts.filter(c => sent.toLowerCase().includes(c.toLowerCase()));
+    for (let i = 0; i < present.length; i++) {
+      for (let j = i + 1; j < present.length; j++) {
+        const a = present[i], b = present[j];
+        const pairKey = [a.toLowerCase(), b.toLowerCase()].sort().join('::');
+        if (usedPairs.has(pairKey)) continue;
+        const verb = findRelationVerb(sent, a, b);
+        if (verb) {
+          usedPairs.add(pairKey);
+          connections.push({ from: a, to: b, label: verb });
+        }
+        if (connections.length >= 8) break;
+      }
+      if (connections.length >= 8) break;
+    }
     if (connections.length >= 8) break;
   }
 
-  // Ensure central concept has connections
+  // Fill remaining with co-occurrence based relations
+  for (const [pair, count] of Object.entries(cooccurrence).sort((a, b) => b[1] - a[1])) {
+    if (connections.length >= 8) break;
+    const [a, b] = pair.split('::');
+    const labelA = concepts.find(c => c.toLowerCase() === a) || a;
+    const labelB = concepts.find(c => c.toLowerCase() === b) || b;
+    const pairKey = [a, b].sort().join('::');
+    if (usedPairs.has(pairKey)) continue;
+    usedPairs.add(pairKey);
+
+    // Determine relationship type from content semantics
+    let relation = count >= 2 ? 'closely linked to' : 'related to';
+    const pairLower = `${a} ${b}`;
+    const contentLower = content.toLowerCase();
+    if (pairLower.includes('diagram') || pairLower.includes('architecture') || pairLower.includes('chart')) relation = 'illustrates';
+    else if (pairLower.includes('test') || pairLower.includes('strategy') || pairLower.includes('evaluat')) relation = 'validates';
+    else if (pairLower.includes('schedule') || pairLower.includes('plan') || pairLower.includes('timeline')) relation = 'structures';
+    else if (pairLower.includes('presentation') || pairLower.includes('demonstration') || pairLower.includes('slide')) relation = 'part of';
+    else if (pairLower.includes('function') || pairLower.includes('system') || pairLower.includes('feature')) relation = 'defines';
+    else if (pairLower.includes('objective') || pairLower.includes('goal') || pairLower.includes('aim')) relation = 'aims for';
+    else if (contentLower.includes(`${a} and ${b}`) || contentLower.includes(`${b} and ${a}`)) relation = 'works with';
+
+    connections.push({ from: labelA, to: labelB, label: relation });
+  }
+
+  // Ensure central concept has connections if still empty
   if (connections.length === 0 && otherConcepts.length > 0) {
     for (let i = 0; i < Math.min(otherConcepts.length, 4); i++) {
       connections.push({
