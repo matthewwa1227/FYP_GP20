@@ -2310,78 +2310,404 @@ VALIDATION RULES:
  * Generate Archive Alchemist notes from document content
  * Returns structured study materials: notes, flashcards, summary, master artifact
  */
-// Smart fallback: split content into sections and extract key sentences
+// ============================================
+// SMART FALLBACK: Extract structure, concepts, and build concept map
+// ============================================
 function buildSmartFallback(content, title) {
-  const lines = content.split(/\n+/).map(l => l.trim()).filter(l => l.length > 10);
-  const sentences = content.match(/[^.!?]+[.!?]+/g) || [];
+  const sentences = (content.match(/[^.!?]+[.!?]+/g) || []).map(s => s.trim()).filter(s => s.length > 10);
+  const paragraphs = content.split(/\n{2,}/).map(p => p.trim()).filter(p => p.length > 20);
 
-  // Build sections from paragraphs
-  const sections = [];
-  const chunkSize = Math.ceil(lines.length / 3);
-  for (let i = 0; i < 3 && i * chunkSize < lines.length; i++) {
-    const chunk = lines.slice(i * chunkSize, (i + 1) * chunkSize);
-    const heading = chunk[0].length < 60 ? chunk[0] : `Section ${i + 1}`;
-    const body = chunk.slice(1).join('\n\n') || chunk[0];
-    sections.push({
-      heading: heading.length > 80 ? heading.substring(0, 80) + '...' : heading,
-      body: body.length > 800 ? body.substring(0, 800) + '...' : body,
-      highlight: ''
-    });
-  }
-  if (sections.length === 0) {
-    sections.push({ heading: 'Overview', body: content.substring(0, 1000), highlight: '' });
-  }
+  // --- 1. DETECT HEADINGS & STRUCTURE ---
+  const sections = extractStructuredSections(content, sentences, paragraphs, title);
 
-  // Build flashcards from key sentences
-  const flashcards = [];
-  const keySents = sentences.filter(s => s.length > 30 && s.length < 200).slice(0, 5);
-  for (let i = 0; i < keySents.length && i < 4; i++) {
-    const sent = keySents[i].trim();
-    flashcards.push({
-      question: `Explain the significance of: "${sent.substring(0, 120)}${sent.length > 120 ? '...' : ''}"`,
-      answer: sent,
-      difficulty: 'medium'
-    });
-  }
-  if (flashcards.length === 0) {
-    flashcards.push({ question: `What is the main topic?`, answer: title, difficulty: 'easy' });
-  }
+  // --- 2. EXTRACT KEY CONCEPTS ---
+  const concepts = extractKeyConcepts(content, sentences);
 
-  // Summary from first few sentences
-  const summarySents = sentences.slice(0, 4).join(' ');
-  const summary = summarySents.length > 20 ? summarySents : content.substring(0, 400);
+  // --- 3. BUILD CONCEPT MAP ---
+  const conceptMap = buildConceptMap(content, concepts, sentences, title);
 
-  // Extract key terms for relationships
-  const words = content.toLowerCase().match(/\b[a-z]{4,}\b/g) || [];
-  const freq = {};
-  words.forEach(w => { freq[w] = (freq[w] || 0) + 1; });
-  const stopWords = new Set(['this','that','with','from','they','have','were','been','their','there','would','should','could','about','after','before','because','through','during','within','without','under','over','into','onto','upon','above','below','between','among','while','when','where','what','which','who','whom','whose','how','why','than','then','them','these','those','each','every','all','any','both','few','many','more','most','other','some','only','own','same','so','just','also','back','even','here','its','now','off','out','still','well']);
-  const topWords = Object.entries(freq)
-    .filter(([w]) => !stopWords.has(w))
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
-    .map(([w]) => w);
+  // --- 4. GENERATE FLASHCARDS ---
+  const flashcards = generateSmartFlashcards(content, sentences, concepts, sections);
 
-  const keyRelationships = [];
-  for (let i = 0; i < topWords.length - 1; i++) {
-    keyRelationships.push({
-      from: topWords[i],
-      to: topWords[i + 1],
-      relationship: 'frequently co-occur in this document'
-    });
-  }
+  // --- 5. CREATE SUMMARY ---
+  const summary = generateSmartSummary(content, sentences, title, concepts);
 
   return {
-    notes: { title: title, sections },
+    notes: { title, sections },
     flashcards,
     summary,
-    masterArtifact: {
-      title: 'Document Structure',
-      description: `This document covers ${topWords.slice(0, 3).join(', ')} and related concepts.`,
-      keyRelationships
-    },
+    masterArtifact: conceptMap,
     xpEarned: 100
   };
+}
+
+function extractStructuredSections(content, sentences, paragraphs, title) {
+  const sections = [];
+  const headingPatterns = [
+    /^\s*(?:\d+\.|[IVX]+\.|\([a-z]\)|\[?\d+\]?)[\s.)]+(.+)$/i,  // 1. Heading, I. Heading, (a) Heading
+    /^\s*([A-Z][A-Z\s\-]{3,}[A-Z])\s*$/,  // ALL CAPS HEADING
+    /^\s*([A-Z][^.!?:]{2,60}[:\-])\s*$/,  // Title Case followed by colon/dash
+    /^\s*•\s*(.+)$/i,  // Bullet points
+    /^\s*[-–—]\s+(.+)$/i,  // Dashes
+  ];
+
+  // Try to find explicit headings first
+  const lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const headingIndices = [];
+
+  lines.forEach((line, idx) => {
+    for (const pattern of headingPatterns) {
+      const match = line.match(pattern);
+      if (match) {
+        const headingText = match[1] || line;
+        if (headingText.length > 3 && headingText.length < 80) {
+          headingIndices.push({ index: idx, text: headingText.replace(/[:\-]+$/, '').trim() });
+          break;
+        }
+      }
+    }
+  });
+
+  // Also detect sentence-level headings (short imperative/title sentences)
+  sentences.forEach((sent, idx) => {
+    const trimmed = sent.trim();
+    if (trimmed.length > 5 && trimmed.length < 60 &&
+        /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,4}[.!?]$/.test(trimmed)) {
+      // Looks like "Selection of material." or "Presentation handling."
+      const alreadyFound = headingIndices.some(h => Math.abs(h.index - idx) < 2);
+      if (!alreadyFound) {
+        headingIndices.push({ index: idx, text: trimmed.replace(/[.!?]+$/, ''), isSentenceHeading: true });
+      }
+    }
+  });
+
+  // Sort and deduplicate headings
+  headingIndices.sort((a, b) => a.index - b.index);
+  const uniqueHeadings = [];
+  for (const h of headingIndices) {
+    if (!uniqueHeadings.some(u => u.text.toLowerCase() === h.text.toLowerCase())) {
+      uniqueHeadings.push(h);
+    }
+  }
+
+  // Build sections from headings
+  if (uniqueHeadings.length >= 2) {
+    for (let i = 0; i < uniqueHeadings.length && i < 6; i++) {
+      const startIdx = uniqueHeadings[i].index;
+      const endIdx = (i < uniqueHeadings.length - 1) ? uniqueHeadings[i + 1].index : lines.length;
+      const sectionLines = lines.slice(startIdx + 1, endIdx);
+      const body = sectionLines.join(' ').trim();
+
+      // Find a highlight sentence (most informative sentence in this section)
+      const sectionSentences = sentences.filter(s => body.includes(s.substring(0, 30)));
+      const highlight = sectionSentences.find(s => s.length > 40 && s.length < 150) || '';
+
+      sections.push({
+        heading: uniqueHeadings[i].text,
+        body: body.length > 600 ? body.substring(0, 600) + '...' : (body || uniqueHeadings[i].text),
+        highlight: highlight.substring(0, 200)
+      });
+    }
+  }
+
+  // Fallback: if no headings found, chunk by paragraphs
+  if (sections.length === 0) {
+    const chunkSize = Math.max(1, Math.ceil(paragraphs.length / 3));
+    for (let i = 0; i < 3 && i * chunkSize < paragraphs.length; i++) {
+      const chunk = paragraphs.slice(i * chunkSize, (i + 1) * chunkSize);
+      const body = chunk.join('\n\n');
+      // Try to extract a heading from the first sentence
+      const firstSent = chunk[0]?.match(/^([^.!?:]{3,60})[.!?:]/)?.[1] || `Section ${i + 1}`;
+      const sectionSents = sentences.filter(s => body.includes(s.substring(0, 20)));
+      const highlight = sectionSents.find(s => s.length > 40 && s.length < 150) || '';
+
+      sections.push({
+        heading: firstSent.length > 3 && firstSent.length < 60 ? firstSent : `Part ${i + 1}`,
+        body: body.length > 600 ? body.substring(0, 600) + '...' : body,
+        highlight: highlight.substring(0, 200)
+      });
+    }
+  }
+
+  // Always ensure at least one section
+  if (sections.length === 0) {
+    sections.push({
+      heading: 'Document Overview',
+      body: content.substring(0, 800),
+      highlight: sentences[0]?.substring(0, 200) || ''
+    });
+  }
+
+  return sections;
+}
+
+function extractKeyConcepts(content, sentences) {
+  // Extract capitalized phrases (potential proper nouns/key terms)
+  const phraseMatches = content.match(/\b[A-Z][a-z]+(?:\s+(?:of|in|the|a|an|for|with|and|or)\s+)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g) || [];
+
+  // Extract technical/academic terms (multi-word phrases that appear multiple times)
+  const bigrams = [];
+  for (const sent of sentences) {
+    const words = sent.toLowerCase().match(/\b[a-z]{4,}\b/g) || [];
+    for (let i = 0; i < words.length - 1; i++) {
+      bigrams.push(`${words[i]} ${words[i + 1]}`);
+    }
+  }
+
+  // Count frequencies
+  const phraseFreq = {};
+  for (const phrase of phraseMatches) {
+    const key = phrase.toLowerCase();
+    if (key.length > 5 && !isCommonPhrase(key)) {
+      phraseFreq[key] = (phraseFreq[key] || 0) + 1;
+    }
+  }
+
+  for (const bigram of bigrams) {
+    if (!isCommonPhrase(bigram)) {
+      phraseFreq[bigram] = (phraseFreq[bigram] || 0) + 0.5;
+    }
+  }
+
+  // Score by frequency and position (earlier = more important)
+  const scored = Object.entries(phraseFreq)
+    .filter(([phrase, count]) => count >= 0.5)
+    .map(([phrase, count]) => {
+      const firstIdx = content.toLowerCase().indexOf(phrase);
+      const positionScore = firstIdx >= 0 ? Math.max(0, 1 - firstIdx / content.length) : 0;
+      return { phrase, score: count + positionScore * 2 };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  // Return top unique concepts with original casing
+  const seen = new Set();
+  const concepts = [];
+  for (const { phrase } of scored.slice(0, 15)) {
+    // Find original casing from content
+    const regex = new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const match = content.match(regex);
+    const original = match ? match[0] : phrase;
+    const normalized = original.toLowerCase();
+    if (!seen.has(normalized) && original.length > 3 && original.length < 50) {
+      seen.add(normalized);
+      concepts.push(original);
+    }
+    if (concepts.length >= 8) break;
+  }
+
+  return concepts;
+}
+
+function isCommonPhrase(phrase) {
+  const common = new Set([
+    'this is', 'that is', 'there is', 'with the', 'from the', 'for the', 'in the', 'of the', 'on the', 'at the',
+    'to the', 'by the', 'as the', 'it is', 'you need', 'you should', 'you will', 'we suggest', 'his her',
+    'need to', 'should be', 'will be', 'can be', 'may be', 'have been', 'has been', 'had been',
+    'each student', 'every student', 'all students', 'the student', 'the students', 'the presentation',
+    'the project', 'the system', 'the following', 'the most', 'the other'
+  ]);
+  return common.has(phrase.toLowerCase());
+}
+
+function buildConceptMap(content, concepts, sentences, title) {
+  if (concepts.length === 0) {
+    return {
+      title: title || 'Key Concepts',
+      description: 'Core concepts from the document.',
+      nodes: [{ id: 'root', label: title || 'Topic', type: 'central' }],
+      connections: [],
+      keyRelationships: []
+    };
+  }
+
+  // Build sentence co-occurrence matrix
+  const cooccurrence = {};
+  for (const sent of sentences) {
+    const sentLower = sent.toLowerCase();
+    const present = concepts.filter(c => sentLower.includes(c.toLowerCase()));
+    for (let i = 0; i < present.length; i++) {
+      for (let j = i + 1; j < present.length; j++) {
+        const pair = [present[i].toLowerCase(), present[j].toLowerCase()].sort().join('::');
+        cooccurrence[pair] = (cooccurrence[pair] || 0) + 1;
+      }
+    }
+  }
+
+  // Pick central concept (most frequent or first mentioned)
+  const centralConcept = concepts[0];
+  const otherConcepts = concepts.slice(1, 7);
+
+  // Build nodes
+  const nodes = [
+    { id: 'root', label: centralConcept, type: 'central' },
+    ...otherConcepts.map((c, i) => ({
+      id: `node-${i}`,
+      label: c,
+      type: i < 3 ? 'primary' : 'secondary'
+    }))
+  ];
+
+  // Build connections based on co-occurrence and semantic patterns
+  const connections = [];
+  const usedPairs = new Set();
+
+  for (const [pair, count] of Object.entries(cooccurrence).sort((a, b) => b[1] - a[1])) {
+    const [a, b] = pair.split('::');
+    const labelA = concepts.find(c => c.toLowerCase() === a) || a;
+    const labelB = concepts.find(c => c.toLowerCase() === b) || b;
+
+    if (usedPairs.has(`${labelA}::${labelB}`)) continue;
+    usedPairs.add(`${labelA}::${labelB}`);
+
+    // Determine relationship type
+    let relation = 'related to';
+    const pairLower = `${a} ${b}`;
+    if (pairLower.includes('diagram') || pairLower.includes('architecture')) relation = 'illustrates';
+    else if (pairLower.includes('test') || pairLower.includes('strategy')) relation = 'validates';
+    else if (pairLower.includes('schedule') || pairLower.includes('plan')) relation = 'structures';
+    else if (pairLower.includes('presentation') || pairLower.includes('demonstration')) relation = 'part of';
+    else if (pairLower.includes('function') || pairLower.includes('system')) relation = 'defines';
+    else if (count >= 2) relation = 'closely linked to';
+
+    connections.push({ from: labelA, to: labelB, label: relation });
+    if (connections.length >= 8) break;
+  }
+
+  // Ensure central concept has connections
+  if (connections.length === 0 && otherConcepts.length > 0) {
+    for (let i = 0; i < Math.min(otherConcepts.length, 4); i++) {
+      connections.push({
+        from: centralConcept,
+        to: otherConcepts[i],
+        label: 'relates to'
+      });
+    }
+  }
+
+  // keyRelationships for backward compatibility
+  const keyRelationships = connections.map(c => ({
+    from: c.from,
+    to: c.to,
+    relationship: c.label
+  }));
+
+  return {
+    title: `${centralConcept} — Concept Network`,
+    description: `A map of key concepts extracted from "${title}". Central theme: ${centralConcept}.`,
+    nodes,
+    connections,
+    keyRelationships
+  };
+}
+
+function generateSmartFlashcards(content, sentences, concepts, sections) {
+  const flashcards = [];
+
+  // Strategy 1: Fill-in-the-blank from key sentences
+  const informativeSents = sentences.filter(s => {
+    const lower = s.toLowerCase();
+    return s.length > 40 && s.length < 180 &&
+      (lower.includes('should') || lower.includes('must') || lower.includes('need') ||
+       lower.includes('will') || lower.includes('can') || lower.includes('required') ||
+       /\d+/.test(s));
+  });
+
+  for (let i = 0; i < informativeSents.length && flashcards.length < 3; i++) {
+    const sent = informativeSents[i];
+    // Try to blank out a key concept
+    const conceptInSent = concepts.find(c => sent.toLowerCase().includes(c.toLowerCase()));
+    if (conceptInSent && sent.length > 50) {
+      const regex = new RegExp(`\\b${conceptInSent.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      const blanked = sent.replace(regex, '______');
+      if (blanked !== sent && !blanked.includes('______ ______')) {
+        flashcards.push({
+          question: `Fill in the blank: "${blanked.substring(0, 160)}${blanked.length > 160 ? '...' : ''}"`,
+          answer: conceptInSent,
+          difficulty: 'medium'
+        });
+        continue;
+      }
+    }
+    // Fallback: ask what/why/how
+    const whatMatch = sent.match(/^(?:the\s+)?([^.]{10,60})\s+(?:is|are|was|were|refers? to|means?|involves?)/i);
+    if (whatMatch) {
+      flashcards.push({
+        question: `What ${whatMatch[1].trim()}?`,
+        answer: sent.substring(0, 150),
+        difficulty: 'medium'
+      });
+    }
+  }
+
+  // Strategy 2: Concept-based questions
+  for (let i = 0; i < concepts.length && flashcards.length < 5; i++) {
+    const concept = concepts[i];
+    const relatedSent = sentences.find(s =>
+      s.toLowerCase().includes(concept.toLowerCase()) && s.length > 40 && s.length < 180
+    );
+    if (relatedSent && !flashcards.some(f => f.answer.toLowerCase().includes(concept.toLowerCase()))) {
+      // Determine question type based on sentence content
+      const lower = relatedSent.toLowerCase();
+      let question;
+      if (lower.includes('because') || lower.includes('due to') || lower.includes('reason')) {
+        question = `Why is ${concept} important in this context?`;
+      } else if (lower.includes('how') || lower.includes('steps') || lower.includes('process')) {
+        question = `How does ${concept} work or apply here?`;
+      } else if (/\d+\s*(?:min|minutes?|hours?|slides?|pages?)/.test(relatedSent)) {
+        question = `What are the specific requirements for ${concept}?`;
+      } else {
+        question = `What is the role or purpose of ${concept}?`;
+      }
+      flashcards.push({
+        question,
+        answer: relatedSent.substring(0, 150),
+        difficulty: 'hard'
+      });
+    }
+  }
+
+  // Strategy 3: Section-based comprehension
+  for (const section of sections.slice(0, 2)) {
+    if (flashcards.length >= 6) break;
+    if (section.heading && section.body.length > 50) {
+      const q = section.heading.match(/\d+\.?\s*(.+)/)?.[1] || section.heading;
+      flashcards.push({
+        question: `Regarding "${q}": what are the key points to remember?`,
+        answer: section.body.substring(0, 200),
+        difficulty: 'medium'
+      });
+    }
+  }
+
+  // Fallback
+  if (flashcards.length === 0) {
+    flashcards.push({
+      question: `What is the main purpose of this document?`,
+      answer: sentences.slice(0, 2).join(' '),
+      difficulty: 'easy'
+    });
+  }
+
+  return flashcards.slice(0, 6);
+}
+
+function generateSmartSummary(content, sentences, title, concepts) {
+  // Use first paragraph if it's informative
+  const firstPara = content.split(/\n{2,}/)[0]?.trim() || '';
+  if (firstPara.length > 30 && firstPara.length < 400) {
+    return firstPara;
+  }
+
+  // Otherwise synthesize from first 2-3 sentences
+  const coreSents = sentences.slice(0, 3);
+  let summary = coreSents.join(' ');
+
+  // Add key concepts if available
+  if (concepts.length > 0) {
+    summary += ` Key concepts include: ${concepts.slice(0, 4).join(', ')}.`;
+  }
+
+  return summary.length > 400 ? summary.substring(0, 400) + '...' : summary;
 }
 
 async function generateArchiveNotes(content, title, tierInfo) {
