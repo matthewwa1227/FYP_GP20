@@ -1,6 +1,7 @@
 // services/kimiService.js
 
 const OpenAI = require('openai');
+const fs = require('fs');
 const logger = require('../utils/logger');
 
 logger.info('Kimi API Key loaded:', process.env.KIMI_API_KEY ? 'Yes (length: ' + process.env.KIMI_API_KEY.length + ')' : 'NO - MISSING!');
@@ -10,6 +11,42 @@ const kimi = new OpenAI({
   baseURL: 'https://api.moonshot.cn/v1',
   timeout: 60000
 });
+
+// ============================================
+// KIMI FILE API — Document Extraction
+// ============================================
+async function extractDocumentWithKimi(filePath) {
+  console.log(`📤 Uploading document to Kimi for extraction: ${filePath}`);
+  const fileStream = fs.createReadStream(filePath);
+  const fileObject = await kimi.files.create({
+    file: fileStream,
+    purpose: 'file-extract'
+  });
+  console.log(`✅ Kimi file uploaded: ${fileObject.id}`);
+
+  const response = await kimi.files.content(fileObject.id);
+  const text = await response.text();
+
+  // Clean up — delete from Kimi to save quota (1000 files per user limit)
+  await kimi.files.del(fileObject.id).catch(err => {
+    console.warn('⚠️ Failed to delete Kimi file:', err.message);
+  });
+
+  if (!text || text.trim().length < 20) {
+    throw new Error('Kimi returned empty or minimal extraction');
+  }
+
+  console.log(`📄 Kimi extracted ${text.length} characters`);
+  return text.trim();
+}
+
+async function deleteKimiFile(fileId) {
+  try {
+    await kimi.files.del(fileId);
+  } catch (err) {
+    // Ignore cleanup errors
+  }
+}
 
 // ============================================
 // TIER-AWARE PROMPT HELPERS
@@ -2805,31 +2842,33 @@ async function generateArchiveNotes(content, title, tierInfo) {
   const tier = getTierPrompt(tierInfo);
   const effectiveAgeTier = tierInfo?.ageTier || deriveAgeTierFromFormLevel(tierInfo?.formLevel) || null;
 
-  const prompt = `You are an expert academic assistant. Transform the following document into structured study materials.
+  // Build messages with document as system context + instructions as user prompt
+  // This leverages Kimi's file-extraction format understanding
+  const systemPrompt = `You are the Archive Alchemist — an expert academic assistant that transforms documents into structured study materials. You analyze document complexity and output at the SAME level as the source. NEVER dumb down university or professional content.
 
 DOCUMENT TITLE: ${title}
-${effectiveAgeTier ? `STUDENT AGE TIER: ${effectiveAgeTier}` : 'STUDENT LEVEL: University / Professional'}
+${effectiveAgeTier ? `TARGET AUDIENCE: ${effectiveAgeTier}` : 'TARGET AUDIENCE: University / Professional'}`;
 
-DOCUMENT CONTENT (first 8000 chars):
-${content.substring(0, 8000)}
+  const userPrompt = `Transform the following document into structured study materials.
 
-INSTRUCTIONS:
-1. Analyze the document's actual complexity. If it contains academic/professional terms (Higher Diploma, Software Engineering, Final Year Project, system architecture, critical evaluation, testing strategy, prototype), output MUST be at university/professional level.
+RULES:
+1. If the document contains academic/professional terms (Higher Diploma, Software Engineering, Final Year Project, system architecture, critical evaluation, testing strategy, prototype), output MUST be at university/professional level.
 2. NEVER output primary-school level content for technical or academic documents.
-3. Generate notes, flashcards, summary, and a master artifact concept map.
-4. Flashcards must test genuine understanding — not trivial facts like "What is the title?"
+3. Extract REAL headings from the document structure — do not invent generic ones.
+4. Flashcards must test genuine understanding with fill-in-blank, what/why/how, or scenario-based questions.
 5. Use the document's actual terminology and concepts.
 6. Match the tone and vocabulary of the source document.
+7. The master artifact concept map should show meaningful relationships (includes, requires, demonstrates, validates, structures, defines) — not generic "related to".
 
-OUTPUT (valid JSON only — no markdown code fences):
+OUTPUT FORMAT — valid JSON only, no markdown code fences:
 {
   "notes": {
-    "title": "Descriptive title",
+    "title": "Descriptive title based on document",
     "sections": [
       {
-        "heading": "Section heading using document concepts",
-        "body": "Detailed content with **bold** key terms. Use the document's own vocabulary and level.",
-        "highlight": "Key insight or important quote"
+        "heading": "Actual heading from document",
+        "body": "Detailed content with **bold** key terms. Use the document's own vocabulary.",
+        "highlight": "Key insight or important quote from the document"
       }
     ]
   },
@@ -2845,14 +2884,14 @@ OUTPUT (valid JSON only — no markdown code fences):
     "title": "Insightful concept map title",
     "description": "Unifying insight connecting the document's key themes",
     "keyRelationships": [
-      {"from": "Key Concept A", "to": "Key Concept B", "relationship": "how they relate"}
+      {"from": "Key Concept A", "to": "Key Concept B", "relationship": "specific verb like includes|requires|demonstrates|validates|structures|defines"}
     ]
   },
   "xpEarned": 150
 }`;
 
   try {
-    console.log(`🤖 [generateArchiveNotes] Sending prompt for: ${title}`);
+    console.log(`🤖 [generateArchiveNotes] Sending prompt for: ${title} (${content.length} chars)`);
 
     // Use AbortController for reliable request cancellation
     const controller = new AbortController();
@@ -2865,7 +2904,11 @@ OUTPUT (valid JSON only — no markdown code fences):
     try {
       response = await kimi.chat.completions.create({
         model: 'kimi-k2.5',
-        messages: [{ role: 'user', content: prompt }],
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'system', content: content },
+          { role: 'user', content: userPrompt }
+        ],
         max_tokens: 4000,
         stream: false
       }, {
@@ -2933,5 +2976,8 @@ module.exports = {
   generateKnowledgeArtifact,
   generateBossBattle,
   validateBossStage,
-  generateArchiveNotes
+  generateArchiveNotes,
+  // Archive Alchemist — Kimi File API
+  extractDocumentWithKimi,
+  deleteKimiFile
 };

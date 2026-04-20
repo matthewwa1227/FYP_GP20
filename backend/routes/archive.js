@@ -188,8 +188,21 @@ router.post('/upload', upload.single('document'), async (req, res) => {
     const file = req.file;
     console.log(`📜 Archive upload: ${file.originalname} (${file.size} bytes)`);
 
-    // Process document
-    const processed = await contentService.processDocument(file.path, file.mimetype);
+    // Try Kimi File API extraction first, fallback to local parsers
+    let processed = await contentService.processDocument(file.path, file.mimetype);
+
+    if (processed.success) {
+      try {
+        const kimiText = await kimiService.extractDocumentWithKimi(file.path);
+        if (kimiText && kimiText.length > 50) {
+          processed.content = kimiText;
+          processed.source = 'kimi';
+          console.log(`✅ Kimi extraction succeeded: ${kimiText.length} chars`);
+        }
+      } catch (kimiErr) {
+        console.warn(`⚠️ Kimi extraction failed, using local parser: ${kimiErr.message}`);
+      }
+    }
 
     if (!processed.success) {
       return res.status(400).json({
