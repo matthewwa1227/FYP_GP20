@@ -1756,70 +1756,93 @@ Important:
     }
   }, 10000);
   
-  try {
-    const response = await fetch('https://api.moonshot.cn/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'kimi-k2.5',
-        messages: [{
-          role: 'user',
-          content: prompt
-        }],
-        max_tokens: 8000, // Maximum tokens for full quality content
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-    clearInterval(progressInterval);
-    
-    const httpTime = ((Date.now() - startTime)/1000).toFixed(1);
-    logger.http(`📡 HTTP ${response.status} | ${httpTime}s`);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-    const message = data.choices?.[0]?.message;
-    
-    if (!message?.content) {
-      throw new Error('Empty response from API');
-    }
-
-    // Clean and parse
-    let content = message.content.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
-    
-    // Try to parse as JSON
+  // Retry loop for empty-content / reasoning-mode issues
+  let lastError = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const parsed = JSON.parse(content);
-      const duration = ((Date.now() - startTime)/1000).toFixed(1);
-      logger.success(`✅ Generated: "${parsed.title}" (${parsed.wordCount} words, ${parsed.questions?.length} questions) in ${duration}s`);
-      return content;
-    } catch (e) {
-      // If parse fails, return the text anyway
-      logger.warn(`⚠️ Non-JSON response after ${((Date.now() - startTime)/1000).toFixed(1)}s`);
-      return content;
-    }
+      if (attempt > 1) {
+        logger.info(`🔄 Reading generation retry ${attempt}/3...`);
+        await new Promise(r => setTimeout(r, 3000));
+      }
 
-  } catch (error) {
-    clearTimeout(timeoutId);
-    clearInterval(progressInterval);
-    
-    // Better error handling with clearer messages
-    if (error.message === 'TIMEOUT_EXCEEDED' || error.name === 'AbortError') {
-      logger.error(`⏱️ Timeout after 3 minutes - using fallback`);
-      throw new Error(`TIMEOUT: Reading generation timed out after 3 minutes. Using pre-generated content.`);
+      const response = await fetch('https://api.moonshot.cn/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'kimi-k2.5',
+          messages: [{
+            role: 'user',
+            content: prompt
+          }],
+          max_tokens: 8000,
+          thinking: { type: 'disabled' }, // FIX: prevent reasoning-only empty responses
+        }),
+        signal: controller.signal,
+      });
+
+      const httpTime = ((Date.now() - startTime)/1000).toFixed(1);
+      logger.http(`📡 HTTP ${response.status} | ${httpTime}s (attempt ${attempt})`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      const message = data.choices?.[0]?.message;
+      
+      // Handle reasoning-mode empty content
+      if (!message?.content || message.content.trim() === '') {
+        if (message?.reasoning_content) {
+          logger.warn(`⚠️ Attempt ${attempt}: Model produced reasoning but no final content — retrying`);
+          throw new Error('Reasoning-only response');
+        }
+        throw new Error('Empty response from API');
+      }
+
+      // Clean and parse
+      let content = message.content.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
+      
+      // Try to parse as JSON
+      try {
+        const parsed = JSON.parse(content);
+        clearTimeout(timeoutId);
+        clearInterval(progressInterval);
+        const duration = ((Date.now() - startTime)/1000).toFixed(1);
+        logger.success(`✅ Generated: "${parsed.title}" (${parsed.wordCount} words, ${parsed.questions?.length} questions) in ${duration}s`);
+        return content;
+      } catch (e) {
+        clearTimeout(timeoutId);
+        clearInterval(progressInterval);
+        // If parse fails, return the text anyway
+        logger.warn(`⚠️ Non-JSON response after ${((Date.now() - startTime)/1000).toFixed(1)}s`);
+        return content;
+      }
+
+    } catch (error) {
+      lastError = error;
+      
+      // AbortError / timeout is fatal — don't retry
+      if (error.message === 'TIMEOUT_EXCEEDED' || error.name === 'AbortError') {
+        clearTimeout(timeoutId);
+        clearInterval(progressInterval);
+        logger.error(`⏱️ Timeout after 3 minutes - using fallback`);
+        throw new Error(`TIMEOUT: Reading generation timed out after 3 minutes. Using pre-generated content.`);
+      }
+      
+      // Log and continue to retry (unless last attempt)
+      logger.error(`❌ Attempt ${attempt} failed:`, error.message);
+      if (attempt === 3) break;
     }
-    
-    logger.error('❌ Reading generation error:', error.message);
-    throw error;
   }
+
+  clearTimeout(timeoutId);
+  clearInterval(progressInterval);
+  logger.error('❌ Reading generation failed after 3 attempts:', lastError?.message);
+  throw lastError || new Error('Reading generation failed after retries');
 }
 
 // ============================================
