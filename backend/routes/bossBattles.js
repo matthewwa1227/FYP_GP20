@@ -85,8 +85,8 @@ router.post('/start', authenticateToken, async (req, res) => {
     const project = projectResult.rows[0];
     console.log(`📊 Project loaded: ${project.title} (subject: ${project.topic || 'N/A'})`);
 
-    // Parallel fetch of artifacts, chapters, and existing battle
-    const [artifactsResult, chaptersResult, existingResult] = await Promise.all([
+    // Parallel fetch of artifacts, chapters, existing battle, and user tier
+    const [artifactsResult, chaptersResult, existingResult, userResult] = await Promise.all([
       db.query(
         `SELECT id, title, content as summary, tags FROM knowledge_artifacts 
          WHERE project_id = $1 AND user_id = $2
@@ -103,8 +103,15 @@ router.post('/start', authenticateToken, async (req, res) => {
         `SELECT * FROM boss_battles 
          WHERE project_id = $1 AND user_id = $2 AND status = 'in_progress'`,
         [projectId, userId]
+      ),
+      db.query(
+        `SELECT age_tier, form_level FROM students WHERE id = $1`,
+        [userId]
       )
     ]);
+
+    const tierInfo = userResult.rows[0] || {};
+    console.log(`📊 User tier: ${tierInfo.age_tier || 'unknown'}, form: ${tierInfo.form_level || 'unknown'}`);
 
     console.log(`📊 Data check: ${artifactsResult.rows.length} artifacts, ${chaptersResult.rows.length} completed chapters, ${existingResult.rows.length} existing battles`);
 
@@ -134,7 +141,8 @@ router.post('/start', authenticateToken, async (req, res) => {
       artifacts: artifactsResult.rows,
       chapters: chaptersResult.rows,
       skillTree: project.skill_tree || [],
-      focus
+      focus,
+      tierInfo
     });
     console.log(`✅ AI generated battle: ${battle.title}`);
 

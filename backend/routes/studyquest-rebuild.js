@@ -943,14 +943,22 @@ router.post('/boss-battles/initiate', authenticateToken, async (req, res) => {
             ORDER BY created_at ASC
         `, [projectId, userId]);
 
+        // Get user tier info
+        const userResult = await db.query(
+            `SELECT age_tier, form_level FROM students WHERE id = $1`,
+            [userId]
+        );
+        const tierInfo = userResult.rows[0] || {};
+
         // Generate boss battle with AI
-        console.log(`⚔️ Generating boss battle for project ${projectId}`);
+        console.log(`⚔️ Generating boss battle for project ${projectId}, tier: ${tierInfo.age_tier || 'unknown'}`);
         
         const battleContent = await kimiService.generateBossBattle({
             topic: project.topic,
             deliverable: project.deliverable,
             artifacts: artifactsResult.rows,
-            skillTree: project.skill_tree
+            skillTree: project.skill_tree,
+            tierInfo
         });
 
         // Create boss battle record

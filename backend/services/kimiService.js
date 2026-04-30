@@ -2265,11 +2265,47 @@ STYLE:
  * Generate boss battle (multi-stage synthesis challenge)
  * Full Newquest specification implementation
  */
-async function generateBossBattle({ topic, deliverable, artifacts, chapters, skillTree, focus }) {
+async function generateBossBattle({ topic, deliverable, artifacts, chapters, skillTree, focus, tierInfo }) {
   const artifactSummaries = artifacts.map(a => `- ${a.title}: ${a.summary || 'Reference guide'}`).join('\n');
   const chapterSummaries = (chapters || []).map(c => `- ${c.title} (Chapter ${c.chapter_number})`).join('\n');
   
+  const tierInstructions = (tierInfo?.ageTier || tierInfo?.formLevel) 
+    ? buildTierInstructions(tierInfo) 
+    : buildTierInstructions({ ageTier: 'P4-P6' });
+  
+  const effectiveAgeTier = tierInfo?.ageTier || deriveAgeTierFromFormLevel(tierInfo?.formLevel) || 'P4-P6';
+  
+  // Tier-specific stage counts and complexity
+  let stageRules = '';
+  if (effectiveAgeTier === 'P1-P3') {
+    stageRules = `STAGE STRUCTURE (exactly 1-2 short stages):
+- For P1-P3: Each stage must be a SINGLE concrete task the child can do in 5-10 minutes.
+- Use very short sentences (5-8 words). One idea at a time.
+- NO abstract reasoning. NO multi-step calculations. NO essay writing.
+- Stage 1: Do one simple thing from the lesson (e.g., "Count 2 siu mai and 1 egg tart. How much?").
+- Stage 2 (optional): Do one slightly different simple thing (e.g., "Aunty gives $10. Give back the change.").
+- Tasks must be playable like a game. Use toys, food, animals, MTR, dim sum as examples.`;
+  } else if (effectiveAgeTier === 'P4-P6') {
+    stageRules = `STAGE STRUCTURE (exactly 2-3 stages):
+- For P4-P6: Each stage is one clear task. Short sentences. Easy words.
+- Stage 1: Apply 1-2 basic skills from the chapters (e.g., calculate total price for 3 items).
+- Stage 2: Apply 2 skills together with a tiny twist (e.g., calculate change from $20).
+- Stage 3 (optional): A simple creative wrap-up (e.g., draw a menu with 4 items and prices).`;
+  } else if (effectiveAgeTier === 'S1-S3') {
+    stageRules = `STAGE STRUCTURE (exactly 3 stages):
+- Stage 1: Basic application using 2 chapter skills simultaneously.
+- Stage 2: Intermediate synthesis requiring 3 skills. Must build on Stage 1.
+- Stage 3: Complete solution integrating all skills. Must build on Stage 2.`;
+  } else {
+    stageRules = `STAGE STRUCTURE (exactly 3 stages):
+- Stage 1: Basic application using 2 chapter skills simultaneously.
+- Stage 2: Intermediate synthesis requiring 3 skills. Stage 2 must consume the actual output from Stage 1.
+- Stage 3: Complete solution integrating all skills. Stage 3 must consume the output from Stage 2.`;
+  }
+  
   const prompt = `You are designing a Newquest Boss Battle - a multi-stage synthesis challenge for project-based learning.
+
+${tierInstructions}
 
 TOPIC: ${topic}
 FINAL DELIVERABLE: ${deliverable}
@@ -2301,25 +2337,17 @@ OUTPUT FORMAT (JSON):
   ]
 }
 
-STAGE STRUCTURE (exactly 3 stages):
-For TECHNICAL subjects (Programming, Data Science, etc.):
-- Stage 1: Basic application using 2 chapter skills simultaneously (e.g., CSV Loading + Data Cleaning)
-- Stage 2: Intermediate synthesis requiring 3 skills. Stage 2 must consume the actual output from Stage 1.
-- Stage 3: Complete solution integrating all skills. Stage 3 must consume the output from Stage 2.
-
-For LANGUAGE / HUMANITIES subjects (English, History, etc.):
-- Stage 1: Identify and apply basic concepts from 2 chapters (e.g., Spot passive voice + Convert to active voice)
-- Stage 2: Synthesize 3+ concepts in a cohesive piece (e.g., Write a paragraph using active voice, strong verbs, and correct punctuation). Stage 2 must build on Stage 1 skills.
-- Stage 3: Complete creative synthesis (e.g., Write a full story/essay applying all learned grammar skills). Stage 3 must incorporate Stage 2 output.
+${stageRules}
 
 CRITICAL RULES:
-1. Each stage MUST require 2-4 chapter skills simultaneously
-2. Stage N must explicitly build on Stage N-1 output
-3. Reference specific artifacts by their exact titles
-4. Make it feel epic but achievable
-5. For technical topics: include realistic technical debt scenarios. For language topics: include common mistakes and traps.
-6. Validation criteria must be specific and testable
-7. Adapt the battle theme to the subject. For English: use fantasy/narrative themes (Grammar Goblin, Word Wizard, etc.). For Programming: use builder/craft themes.`;
+1. Each stage MUST be achievable for the target age group above.
+2. Stage N must explicitly build on Stage N-1 output (if more than 1 stage).
+3. Reference specific artifacts by their exact titles.
+4. Make it feel epic but achievable.
+5. Validation criteria must be specific and testable.
+6. Adapt the battle theme to the subject. For English: use fantasy/narrative themes. For Programming: use builder/craft themes.
+7. NEVER ask the student to write essays, long paragraphs, or complex multi-step calculations if the target is P1-P3 or P4-P6.
+8. For young children (P1-P3): tasks should feel like a game with concrete objects, not a test.`;
 
   try {
     console.log(`🤖 [generateBossBattle] Sending prompt to AI for topic: ${topic}, focus: ${focus || 'none'}`);
