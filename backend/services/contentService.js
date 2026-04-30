@@ -138,18 +138,16 @@ const processDocument = async (filePath, mimeType) => {
   }
 };
 
-// PDF text extraction using pdf-parse
+// PDF text extraction using pdf-parse v2
 const extractPdfText = async (filePath) => {
   try {
-    const pdfModule = require('pdf-parse');
-    const pdfParse = typeof pdfModule === 'function' ? pdfModule : (pdfModule.default || pdfModule.parse);
-    if (typeof pdfParse !== 'function') {
-      throw new Error('pdf-parse module not available as a function');
-    }
+    const { PDFParse } = require('pdf-parse');
     const buffer = await fs.readFile(filePath);
-    const data = await pdfParse(buffer);
-    if (data.text && data.text.trim().length > 50) {
-      return data.text.trim().substring(0, 50000);
+    const parser = new PDFParse({ data: buffer });
+    const result = await parser.getText();
+    await parser.destroy();
+    if (result.text && result.text.trim().length > 50) {
+      return result.text.trim().substring(0, 50000);
     }
     return `[PDF Document: ${path.basename(filePath)}] — No extractable text found.`;
   } catch (error) {
