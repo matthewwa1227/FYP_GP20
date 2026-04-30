@@ -133,6 +133,10 @@ async function analyzeDocument(filePath, mimeType) {
       
       const analysis = parseJSON(response);
       
+      if (!analysis) {
+        return { success: false, error: 'Could not parse AI response for images' };
+      }
+      
       return {
         success: true,
         ...analysis,
@@ -158,6 +162,10 @@ async function analyzeDocument(filePath, mimeType) {
       const response = await kimiService.analyzeDocumentImage(imageBase64, mimeType);
       
       const analysis = parseJSON(response);
+      
+      if (!analysis) {
+        return { success: false, error: 'Could not parse AI response for image' };
+      }
       
       return {
         success: true,
@@ -215,6 +223,10 @@ Return ONLY valid JSON, no markdown, no explanations.`;
     );
     
     const analysis = parseJSON(response);
+    
+    if (!analysis) {
+      return { success: false, error: 'Could not parse AI response for document' };
+    }
     
     return {
       success: true,
