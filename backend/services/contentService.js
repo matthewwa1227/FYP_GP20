@@ -5,6 +5,7 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const fs = require('fs').promises;
 const path = require('path');
+const kimiService = require('./kimiService');
 
 // ============================================
 // URL FETCHING
@@ -186,18 +187,26 @@ const extractPptxText = async (filePath) => {
   }
 };
 
-// Image OCR placeholder
+// Image OCR using Kimi Vision API (MISSION 65)
 const extractImageText = async (filePath) => {
-  // In production, use Tesseract.js or similar OCR library
-  // For now, return a message indicating OCR is needed
-  return `[Image Document: ${path.basename(filePath)}]
+  try {
+    const ext = path.extname(filePath).toLowerCase();
+    let mimeType = 'image/jpeg';
+    if (ext === '.png') mimeType = 'image/png';
+    else if (ext === '.webp') mimeType = 'image/webp';
+    else if (ext === '.gif') mimeType = 'image/gif';
 
-Note: Image text extraction requires OCR (Optical Character Recognition).
-To enable image support, install: npm install tesseract.js
+    const text = await kimiService.extractTextFromImage(filePath, mimeType);
 
-For now, please:
-1. Type out the exercises manually in the text area, OR
-2. Use a PDF or text document instead`;
+    if (!text || text.trim().length < 10) {
+      return `[Image: ${path.basename(filePath)}] — No readable text found in image.`;
+    }
+
+    return text;
+  } catch (error) {
+    console.error('❌ Image OCR error:', error.message);
+    return `[Image: ${path.basename(filePath)}] — Text extraction failed: ${error.message}`;
+  }
 };
 
 // ============================================

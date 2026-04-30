@@ -2,6 +2,7 @@
 
 const OpenAI = require('openai');
 const fs = require('fs');
+const path = require('path');
 const logger = require('../utils/logger');
 
 logger.info('Kimi API Key loaded:', process.env.KIMI_API_KEY ? 'Yes (length: ' + process.env.KIMI_API_KEY.length + ')' : 'NO - MISSING!');
@@ -1506,6 +1507,130 @@ Return ONLY valid JSON, no markdown, no explanations.`
 }
 
 // ============================================
+// EXTRACT TEXT FROM IMAGE - Vision OCR (MISSION 65)
+// ============================================
+async function extractTextFromImage(imagePath, mimeType = 'image/jpeg') {
+  const apiKey = process.env.KIMI_API_KEY;
+  if (!apiKey) throw new Error('KIMI_API_KEY missing');
+
+  const imageBuffer = fs.readFileSync(imagePath);
+  const imageBase64 = imageBuffer.toString('base64');
+  console.log(`🖼️ Vision OCR: ${path.basename(imagePath)} (${imageBase64.length} chars base64)`);
+
+  // Helper to compress image if sharp is available
+  async function compressImage(base64String) {
+    try {
+      const sharp = require('sharp');
+      const buffer = Buffer.from(base64String, 'base64');
+      const originalSize = base64String.length;
+
+      const resized = await sharp(buffer)
+        .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 80 })
+        .toBuffer();
+
+      const compressed = resized.toString('base64');
+      console.log(`📉 Compressed image: ${originalSize} → ${compressed.length} chars (${Math.round((1 - compressed.length / originalSize) * 100)}% reduction)`);
+      return compressed;
+    } catch (e) {
+      return base64String;
+    }
+  }
+
+  const compressed = await compressImage(imageBase64);
+
+  const contentType = mimeType === 'image/png' ? 'image/png' :
+                      mimeType === 'image/webp' ? 'image/webp' :
+                      mimeType === 'image/gif' ? 'image/gif' :
+                      'image/jpeg';
+
+  const content = [
+    {
+      type: 'text',
+      text: `Please extract and transcribe ALL visible text from this image.
+
+If the image contains handwritten text, do your best to read it.
+If the image contains printed text, transcribe it exactly.
+If the image contains both text and diagrams, transcribe all text and describe any important diagrams or formulas.
+
+Return ONLY the extracted text. Do not add explanations, markdown formatting, or commentary. Just the raw text content.`
+    },
+    {
+      type: 'image_url',
+      image_url: {
+        url: `data:${contentType};base64,${compressed}`
+      }
+    }
+  ];
+
+  // Retry logic for connection errors
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      console.log(`🚀 Vision OCR attempt ${attempt}/3...`);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+      const response = await fetch('https://api.moonshot.cn/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'kimi-k2.5',
+          messages: [{
+            role: 'user',
+            content: content
+          }],
+          max_tokens: 4000,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      console.log(`📡 HTTP Status: ${response.status}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      const message = data.choices?.[0]?.message;
+
+      if (!message?.content || message.content.trim() === '') {
+        throw new Error('Invalid response: content is empty');
+      }
+
+      console.log(`✅ Vision OCR complete: ${message.content.length} chars`);
+      return message.content.trim();
+
+    } catch (error) {
+      const msg = (error.message || '').toLowerCase();
+      const isRetryable = error.code === 'ECONNRESET' ||
+                         error.code === 'ECONNABORTED' ||
+                         error.code === 'ETIMEDOUT' ||
+                         error.message?.includes('fetch failed') ||
+                         error.message?.includes('aborted') ||
+                         error.message?.includes('socket hang up') ||
+                         msg.includes('engine overloaded') ||
+                         msg.includes('content is empty');
+
+      console.error(`❌ OCR attempt ${attempt} failed:`, error.message, isRetryable ? '(retryable)' : '(fatal)');
+
+      if (attempt === 3 || !isRetryable) {
+        throw error;
+      }
+
+      const delay = attempt * 3000;
+      console.log(`⏳ Retrying in ${delay}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+}
+
+// ============================================
 // READING COMPREHENSION - MISSION 55
 // FULL QUALITY - Extended timeout for better content
 // ============================================
@@ -2971,6 +3096,7 @@ module.exports = {
   generateExercises,
   generateReadingPassage,
   analyzeDocumentImage,
+  extractTextFromImage,
   generateStoryIntro,
   generateStoryScene,
   generateStoryLesson,

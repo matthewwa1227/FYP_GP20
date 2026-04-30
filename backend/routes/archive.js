@@ -36,14 +36,18 @@ const fileFilter = (req, file, cb) => {
     'text/markdown',
     'application/pdf',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/gif'
   ];
 
   if (allowedTypes.includes(file.mimetype) ||
-      file.originalname.match(/\.(txt|md|pdf|docx|pptx)$/i)) {
+      file.originalname.match(/\.(txt|md|pdf|docx|pptx|jpg|jpeg|png|webp|gif)$/i)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only TXT, MD, PDF, DOCX, and PPTX files are allowed.'), false);
+    cb(new Error('Invalid file type. Only TXT, MD, PDF, DOCX, PPTX, and images (JPG, PNG, WebP, GIF) are allowed.'), false);
   }
 };
 

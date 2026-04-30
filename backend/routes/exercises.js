@@ -62,6 +62,48 @@ const upload = multer({
 // HELPER FUNCTIONS
 // ============================================
 
+// Helper to remove trailing commas from JSON strings (respects quoted strings)
+function sanitizeJSONString(str) {
+  let result = '';
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+
+    if (escapeNext) {
+      result += char;
+      escapeNext = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      result += char;
+      escapeNext = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      result += char;
+      continue;
+    }
+
+    // Only strip commas that are trailing (next non-whitespace is ] or })
+    if (!inString && char === ',') {
+      let j = i + 1;
+      while (j < str.length && /\s/.test(str[j])) j++;
+      if (j < str.length && (str[j] === ']' || str[j] === '}')) {
+        continue; // skip trailing comma
+      }
+    }
+
+    result += char;
+  }
+
+  return result;
+}
+
 // Helper to parse JSON from AI response - ROBUST VERSION
 function parseJSON(response) {
   try {
@@ -94,6 +136,9 @@ function parseJSON(response) {
     }
     
     content = content.substring(jsonStart, jsonEnd + 1);
+    
+    // Fix common LLM JSON malformations (trailing commas, etc.)
+    content = sanitizeJSONString(content);
     
     // Parse the cleaned JSON
     const parsed = JSON.parse(content);
@@ -425,6 +470,10 @@ IMPORTANT: For fill_blank questions, the 'question' field MUST contain the full 
       }
       
       content = content.substring(start, end + 1);
+      
+      // Fix common LLM JSON malformations (trailing commas, etc.)
+      content = sanitizeJSONString(content);
+      
       console.log('Extracted JSON (first 300 chars):', content.substring(0, 300));
       
       exercises = JSON.parse(content);
