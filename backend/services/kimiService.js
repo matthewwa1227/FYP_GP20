@@ -1246,7 +1246,7 @@ async function generateExercises(prompt, retries = 3) {
       console.log(`📝 Calling Kimi API (attempt ${attempt + 1})...`);
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000);
+      const timeoutId = setTimeout(() => controller.abort(), 190000);
       
       // FIX MISSION 45: Increase to 8000 tokens to handle heavy reasoning + full JSON
       console.log(`⚠️ Using 8000 max_tokens for exercise generation (reasoning + JSON)`);
