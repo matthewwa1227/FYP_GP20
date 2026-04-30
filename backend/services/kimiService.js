@@ -1458,7 +1458,17 @@ Return ONLY valid JSON, no markdown, no explanations.`
         console.error('⚠️ Token limit hit!');
       }
 
+      if (finishReason === 'engine_overloaded') {
+        console.error('⚠️ Engine overloaded — will retry');
+        throw new Error('Engine overloaded: no output generated');
+      }
+
       if (!message?.content || message.content.trim() === '') {
+        // If reasoning exists but content is empty, model was interrupted
+        if (message?.reasoning_content) {
+          console.error('⚠️ Model produced reasoning but no final content — will retry');
+          throw new Error('Engine overloaded: reasoning present but content empty');
+        }
         throw new Error('Invalid response: content is empty');
       }
 
@@ -1470,14 +1480,17 @@ Return ONLY valid JSON, no markdown, no explanations.`
 
     } catch (error) {
       // Check if this is a retryable error
+      const msg = (error.message || '').toLowerCase();
       const isRetryable = error.code === 'ECONNRESET' || 
                          error.code === 'ECONNABORTED' ||
                          error.code === 'ETIMEDOUT' ||
                          error.message?.includes('fetch failed') ||
                          error.message?.includes('aborted') ||
-                         error.message?.includes('socket hang up');
+                         error.message?.includes('socket hang up') ||
+                         msg.includes('engine overloaded') ||
+                         msg.includes('content is empty');
       
-      console.error(`❌ Attempt ${attempt} failed:`, error.message);
+      console.error(`❌ Attempt ${attempt} failed:`, error.message, isRetryable ? '(retryable)' : '(fatal)');
       
       // If last attempt or non-retryable error, throw
       if (attempt === 3 || !isRetryable) {
