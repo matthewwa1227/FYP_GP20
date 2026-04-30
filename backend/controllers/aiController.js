@@ -115,13 +115,22 @@ const chatWithBuddy = async (req, res) => {
       urls: urls
     };
 
-    // Get AI response with Socratic mode
-    const aiResponse = await kimiService.chatWithStudyBuddySocratic(
-      message,
-      formattedHistory,
-      contextForAI,
-      mediaContent
-    );
+    // MISSION: Use direct-answer mode for simple questions, Socratic only for homework help
+    const useSocratic = isHomework && similarTopicCount < 2;
+    console.log(`🤖 Study Buddy mode: ${useSocratic ? 'SOCRATIC' : 'DIRECT'} (homework=${isHomework}, hints=${similarTopicCount})`);
+    
+    const aiResponse = useSocratic
+      ? await kimiService.chatWithStudyBuddySocratic(
+          message,
+          formattedHistory,
+          contextForAI,
+          mediaContent
+        )
+      : await kimiService.chatWithStudyBuddy(
+          message,
+          formattedHistory,
+          contextForAI
+        );
 
     // Save conversation
     const isValidResponse = aiResponse && 
