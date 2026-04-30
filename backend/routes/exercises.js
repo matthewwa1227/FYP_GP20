@@ -365,10 +365,12 @@ Rules: Real sentences only, no placeholders.
 Return JSON:
 {
   "questions": [
-    {"type": "fill_blank", "question": "...", "sentence": "...", "answer": "..."},
-    {"type": "multiple_choice", "question": "...", "choices": ["A", "B", "C", "D"], "answer": "B"}
+    {"type": "fill_blank", "question": "The FULL sentence with a _____ blank", "sentence": "Same as question — the full sentence with a blank", "answer": "The correct word"},
+    {"type": "multiple_choice", "question": "The full question text", "choices": ["A", "B", "C", "D"], "answer": "B"}
   ]
-}`;
+}
+
+IMPORTANT: For fill_blank questions, the 'question' field MUST contain the full sentence with the blank (e.g., "The assassination took place in _____."). Do NOT put generic text like "Complete the sentence." in the question field.`;
 
   try {
     // NO TIMEOUT - Just wait for AI response naturally
@@ -819,6 +821,8 @@ OUTPUT FORMAT:
     }
   ]
 }
+
+IMPORTANT: For fill_blank questions, the 'question' field MUST contain the full sentence with the blank (e.g., "The assassination took place in _____."). Do NOT put generic text like "Complete the sentence." in the question field.
 
 Return ONLY valid JSON. No markdown, no explanations.`;
 
